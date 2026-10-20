@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Тренажёр для речи</title>
+<style>
+:root{--bg:#f4f2ec;--card:#fdfcf9;--ink:#161513;--mute:#807c73;--line:#e6e2d8}
+@media (prefers-color-scheme:dark){:root{--bg:#0f0f0e;--card:#1a1a19;--ink:#f0efec;--mute:#908e86;--line:#2c2c2a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;place-items:center;min-height:100vh;padding:16px;text-align:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 26px;max-width:440px;width:100%}
+.mark{width:44px;height:44px;margin:0 auto 12px;display:block}
+.mark rect{fill:var(--ink)}.mark path{stroke:var(--card);stroke-width:2.4;stroke-linecap:round;fill:none}
+h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+p{color:var(--mute);margin:8px 0 0}
+button{font:inherit;border:1px solid var(--line);background:none;color:var(--ink);border-radius:12px;padding:10px 18px;cursor:pointer;margin-top:14px}
+</style></head><body><div class="card">
+<svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M8 13v6M12 10v12M16 7v18M20 11v10M24 14v4"/></svg>
+<h1>Тренажёр для речи</h1><p id="m">Открываю…</p><button id="again" hidden>Попробовать ещё раз</button></div>
+<script>
+// Ключ после # не уходит на сервер GitHub. Текущий адрес приложения бот кладёт в url.txt.
+// Перед переходом проверяем, что адрес жив: после сна компьютера туннель бывает мёртв,
+// бот поднимает новый в течение пары минут — поэтому несколько попыток с перечитыванием url.txt.
+const [key, tab] = location.hash.slice(1).split('~'), m = document.getElementById('m'), again = document.getElementById('again');
+const RAW = 'https://api.github.com/repos/listestateru-cell/trenazher-rechi/contents/url.txt';
+const timeout = (ms) => new Promise((_, no) => setTimeout(() => no('timeout'), ms));
+async function tryOpen(attempt) {
+  again.hidden = true;
+  try {
+    const u = (await (await fetch(RAW + '?t=' + Date.now(), {headers: {Accept: 'application/vnd.github.raw'}, cache: 'no-store'})).text()).trim();
+    if (!/^https:\/\//.test(u)) throw 'no url';
+    const r = await Promise.race([fetch(u + '/healthz', {cache: 'no-store'}), timeout(8000)]);
+    if (!r.ok) throw 'down';
+    location.replace(u + '/u/' + key + '/' + (tab ? '#' + decodeURIComponent(tab) : ''));
+  } catch (_) {
+    if (attempt < 12) {
+      m.textContent = attempt ? `Компьютер с тренажёром пока не отвечает, жду… (попытка ${attempt + 1} из 12)` : 'Соединяюсь…';
+      setTimeout(() => tryOpen(attempt + 1), 10000);
+    } else {
+      m.textContent = 'Не достучался до компьютера с тренажёром. Скорее всего, он выключен или спит. Попробуйте позже.';
+      again.hidden = false;
+    }
+  }
+}
+again.onclick = () => tryOpen(0);
+if (!/^[A-Za-z0-9_-]{16,}$/.test(key || '')) m.textContent = 'Ссылка неполная. Возьмите свою в боте: кнопка «🌐 Веб-версия».';
+else tryOpen(0);
+</script></body></html>

@@ -1,0 +1,1 @@
+window.TRAINER_CONNECTION_CONFIG = {"hosted": true, "pagesUrl": "https://listestateru-cell.github.io/trenazher-rechi/", "contentsUrl": "https://api.github.com/repos/listestateru-cell/trenazher-rechi/contents/url.txt", "urlFile": "https://listestateru-cell.github.io/trenazher-rechi/url.txt"};

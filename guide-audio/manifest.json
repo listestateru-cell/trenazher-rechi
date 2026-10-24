@@ -1,0 +1,178 @@
+{
+  "provider": "Microsoft Edge TTS",
+  "voice": "ru-RU-SvetlanaNeural",
+  "rate": "+0%",
+  "pitch": "+0Hz",
+  "edge_tts_version": "7.3.1",
+  "version": "d9ba7770088f",
+  "tracks": [
+    {
+      "file": "clarify-intro.m4a",
+      "kind": "clarify",
+      "scene": "intro",
+      "duration": 12.2,
+      "text_sha256": "1675a647cc2053b0833b193a12e3fce52e395eba4d61086300bdff842e83c207",
+      "sha256": "d8b45688d979091a967c558483226e36353d65b78cce519d7dfc9e8936b2614a"
+    },
+    {
+      "file": "clarify-source.m4a",
+      "kind": "clarify",
+      "scene": "source",
+      "duration": 13.3,
+      "text_sha256": "ecaa1e5c7526f83eac9e488a6ffa2aa5d625c73a55b34087be0ab580da1d3acb",
+      "sha256": "6fe11a1fe7622cf9d0c28ae22d12deaadc06f4082871b3ae7cf7610b0ef3e507"
+    },
+    {
+      "file": "clarify-choices.m4a",
+      "kind": "clarify",
+      "scene": "choices",
+      "duration": 12.0,
+      "text_sha256": "013fdb8fedaf01f1412c28a4712823b9449d44b587e1d3738b79fc6bf0bafe5f",
+      "sha256": "6f6602a4ed321fdd3e53eeaf085d16204157e6d519a7e4b22add11b3de873dcc"
+    },
+    {
+      "file": "clarify-first-answer.m4a",
+      "kind": "clarify",
+      "scene": "first-answer",
+      "duration": 11.5,
+      "text_sha256": "aa50c082514a7478e4602fb3525722c28e7ba9bb9eb6fb12d03b52f11d561b30",
+      "sha256": "3dcdc345ebdc062408496e2e608e4ab8ea2c25431a4044066247e458ff8cae1b"
+    },
+    {
+      "file": "clarify-feedback.m4a",
+      "kind": "clarify",
+      "scene": "feedback",
+      "duration": 9.0,
+      "text_sha256": "fb0c484041dbfeb7e3e71ff740ed2251f9ad226fd8e16d1ba77a22c2a85c8e90",
+      "sha256": "400ca172d588cab7d29c290b2d67df306de27202f2804d66b0d8d3151fc3d7fb"
+    },
+    {
+      "file": "clarify-revision.m4a",
+      "kind": "clarify",
+      "scene": "revision",
+      "duration": 12.7,
+      "text_sha256": "a3456d78cc1ff36a73acc850c79636fb999d96e07a7ee5fbf6a8ddd0d0e45899",
+      "sha256": "1fb9ffcd422ab35e883c9991e082d1b37a50ba1d645a11aefc5ea4da87e12b3e"
+    },
+    {
+      "file": "clarify-transfer.m4a",
+      "kind": "clarify",
+      "scene": "transfer",
+      "duration": 13.6,
+      "text_sha256": "ca494fd02253dc8c22c1fe9b42f0cff77f1d1fc9d5ad9bc8d7144e404f8ce3bc",
+      "sha256": "bccfd5758585afd599547d589ff5bb55af063b5bd3609fa21a9468f4ed7113ff"
+    },
+    {
+      "file": "synonyms-intro.m4a",
+      "kind": "synonyms",
+      "scene": "intro",
+      "duration": 16.1,
+      "text_sha256": "0fb7f129cd75226a0721ee6a6f5364a2811dac68e8b8f11fe79f95048f405a0b",
+      "sha256": "20082295d91118e1909fb9d1eed5ef77c66fa9d5f42c9b773494812bd31e2faf"
+    },
+    {
+      "file": "synonyms-source.m4a",
+      "kind": "synonyms",
+      "scene": "source",
+      "duration": 15.8,
+      "text_sha256": "387134ee7e22142500cf1d1e229919346fa7e62e980003e7a5a9b6d5f267d087",
+      "sha256": "c2c6927a5dae7461ba4ea0fd747d4bc833a505e06c24c4ba448f112e655d1fc0"
+    },
+    {
+      "file": "synonyms-choices.m4a",
+      "kind": "synonyms",
+      "scene": "choices",
+      "duration": 14.9,
+      "text_sha256": "7e78b8d654465e17bed213e4a020feb237016d1d12b736b5fe61a070cf38cf7a",
+      "sha256": "13c13f736b1d5b046b24a5c07d36add1bfb646b78a3ef4ea4aa0f938adba53c0"
+    },
+    {
+      "file": "synonyms-first-answer.m4a",
+      "kind": "synonyms",
+      "scene": "first-answer",
+      "duration": 12.5,
+      "text_sha256": "e7edc334302362d3ceda42a3fae3f6ec5f93cf24416cc72d878e78f8ccc22f1a",
+      "sha256": "c91a27621069f6b9402b0e1ad03c346e75128982ef09fcfcf3d72182bd506474"
+    },
+    {
+      "file": "synonyms-feedback.m4a",
+      "kind": "synonyms",
+      "scene": "feedback",
+      "duration": 13.8,
+      "text_sha256": "c25009b31f8c77ff3661f909edaf9afbff4e0ac46be6a26f84a0d22a7eeca8a0",
+      "sha256": "dab14379d351df0d5f38cefa53b18cfdfe71dd076658f0f128f618c085b52f15"
+    },
+    {
+      "file": "synonyms-revision.m4a",
+      "kind": "synonyms",
+      "scene": "revision",
+      "duration": 15.8,
+      "text_sha256": "0573aeee331358abb949fb5ec0ea55095700c031c115108392e50ef4accef89d",
+      "sha256": "2d66e6c5273498597f5f65d551a4a9648d48ffd993630fa58e46300fa586d172"
+    },
+    {
+      "file": "synonyms-transfer.m4a",
+      "kind": "synonyms",
+      "scene": "transfer",
+      "duration": 15.1,
+      "text_sha256": "3e0ff2fa4cba0352e3eca380ddfa3cc091fa40f7b0c143eb40c9d7625582ccc8",
+      "sha256": "7ee01f127c7bd4dbfe9fc9a20dcf5ec97508e7d0b339da00a990529bc1c795c7"
+    },
+    {
+      "file": "lexicon-intro.m4a",
+      "kind": "lexicon",
+      "scene": "intro",
+      "duration": 8.8,
+      "text_sha256": "4e9b6340be6ad5dae01e1eebb721c7ad912b539ec79f34ff234e87c8186d83b7",
+      "sha256": "2d7c713d322998c2f5dacc26e637c50746f1e9fa698a550fc6a0590a9d9f58e7"
+    },
+    {
+      "file": "lexicon-source.m4a",
+      "kind": "lexicon",
+      "scene": "source",
+      "duration": 11.2,
+      "text_sha256": "e72d1957ff0c841507be269fe5362263a5d16bd523828ae21dcfe8113bd1892d",
+      "sha256": "12a28c4efa33fd46a92a1e462bf395b7d0b4414bc89c4a54bdde6fc59ce1ad6d"
+    },
+    {
+      "file": "lexicon-choices.m4a",
+      "kind": "lexicon",
+      "scene": "choices",
+      "duration": 13.1,
+      "text_sha256": "e700f0b04436ea55f51f3c5516c8d8ea308d45740d7d6ff5acd647e1c043eb3b",
+      "sha256": "e8e7e31859e064cb62309dc5c1c3be3d88cdee0ba918eee01ac8f2b117525ec8"
+    },
+    {
+      "file": "lexicon-first-answer.m4a",
+      "kind": "lexicon",
+      "scene": "first-answer",
+      "duration": 11.6,
+      "text_sha256": "1b9eedfa7354b78c9261417f645e3f791ab34fab986d1abe727d29b95fbaf97d",
+      "sha256": "f8c26fb000766ea15d4584d4694dfd4468dc662224b6063ea67bef594d2d6934"
+    },
+    {
+      "file": "lexicon-feedback.m4a",
+      "kind": "lexicon",
+      "scene": "feedback",
+      "duration": 10.3,
+      "text_sha256": "70f464e3b765af91f8344e7c5a7cfbf051a81e724f76a40d52ba3be3fb7cd2a6",
+      "sha256": "cef2b1232f90053b4bda2e43490e1cc4a2984c31c8b92410fa2d3b0412c119d9"
+    },
+    {
+      "file": "lexicon-revision.m4a",
+      "kind": "lexicon",
+      "scene": "revision",
+      "duration": 10.2,
+      "text_sha256": "6af9d794f752961e7df27da9a455f6aa7d8f27c0bc758f085ef471c45e6e7c14",
+      "sha256": "158bb4b77460d3e9bb57884c88365bb6998acb06efb2868b50066c1ab2b056b0"
+    },
+    {
+      "file": "lexicon-transfer.m4a",
+      "kind": "lexicon",
+      "scene": "transfer",
+      "duration": 12.1,
+      "text_sha256": "50aaeb8c8bc704361bd2da3e9d76f728855a863f5f3c7361ed99b4d0ccffa97d",
+      "sha256": "b57f186c22feac64fc17b3e5db2800f2f8b0d160778bf8a9c8364ae5d3898b92"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+.speech-connection-cover {
+  position: fixed; inset: 0; z-index: 500;
+  display: grid; place-items: center; overflow: auto;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: var(--bg, #f7f5ef); color: var(--ink, #22221e);
+}
+.speech-connection-card { width: min(100%, 440px); padding: 24px; border: 1px solid var(--line, #d8d6cf); border-radius: 20px; background: var(--surface, #fffdfa); }
+.speech-connection-card h1 { margin: 0 0 24px; font-size: clamp(24px, 6vw, 32px); line-height: 1.2; }
+.speech-connection-status { margin: 0 0 12px; font-size: 18px; line-height: 1.5; }
+.speech-connection-detail { margin: 0 0 24px; color: var(--ink-2, #595950); font-size: 15px; line-height: 1.5; }
+.speech-connection-login { display: grid; gap: 12px; }
+.speech-connection-login label { font-size: 16px; line-height: 1.4; }
+.speech-connection-login input { width: 100%; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--line, #b7b4ac); border-radius: 10px; color: inherit; background: var(--bg, #f7f5ef); font: inherit; font-size: 16px; }
+.speech-connection-cover button, .speech-connection-note button { min-height: 44px; white-space: normal; }
+.speech-connection-login[hidden], .speech-connection-cover [hidden] { display: none; }
+.speech-connection-note { position: fixed; z-index: 450; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); top: max(12px, env(safe-area-inset-top)); display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 680px; margin-inline: auto; padding: 12px 16px; border: 1px solid var(--line, #c8c5bc); border-radius: 12px; background: var(--surface, #fffdfa); color: var(--ink, #22221e); box-shadow: 0 6px 24px #0002; font-size: 14px; line-height: 1.4; }
+.speech-connection-note span { min-width: 0; }
+.speech-connection-note button { flex: 0 0 auto; }
+.speech-connection-card :focus-visible, .speech-connection-note :focus-visible { outline: 3px solid var(--accent, #795b27); outline-offset: 3px; }
+@media (max-width: 400px) { .speech-connection-card { padding: 20px; } .speech-connection-note { align-items: flex-start; } }

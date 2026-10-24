@@ -19,7 +19,11 @@
     const normalized = route.startsWith('/') ? route : '/' + route;
     return /^\/(?!\/)[^\s#]*$/.test(normalized) ? normalized : '/';
   };
-  const fragment = location.hash.slice(1).split('~');
+  // Telegram дописывает параметры Mini App в тот же hash. Ключ и маршрут
+  // разбираем без этого суффикса, сохраняя собственные query-параметры маршрута.
+  const launchParts = value => String(value || '').replace(/^#/, '')
+    .split(/[?&]tgWebApp[A-Za-z0-9_]*=/, 1)[0].split('~');
+  const fragment = launchParts(location.hash);
   const pathKey = /^\/u\/([A-Za-z0-9_-]{16,64})(?:\/|$)/.exec(location.pathname)?.[1] || '';
   const suppliedKey = validKey(fragment[0]) ? fragment[0] : '';
   let key = suppliedKey || pathKey || (hosted && validKey(read(KEY_STORE)) ? read(KEY_STORE) : '');
@@ -209,7 +213,7 @@
     const expected = new URL(config.pagesUrl || shell.href);
     const isShell = link.origin === expected.origin && link.pathname === expected.pathname;
     let candidate;
-    if (isShell) candidate = link.hash.slice(1).split('~')[0];
+    if (isShell) candidate = launchParts(link.hash)[0];
     else {
       normalizeEndpoint(link.origin);
       candidate = /^\/u\/([A-Za-z0-9_-]{16,64})\/?$/.exec(link.pathname)?.[1];
@@ -311,7 +315,7 @@
   else start();
   window.addEventListener('online', () => connectAndReady(true));
   window.addEventListener('hashchange', () => {
-    const incoming = location.hash.slice(1).split('~');
+    const incoming = launchParts(location.hash);
     if (!validKey(incoming[0])) return;
     const nextKey = incoming[0], route = safeRoute(incoming[1]);
     if (nextKey !== key) {

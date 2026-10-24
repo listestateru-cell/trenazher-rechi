@@ -535,7 +535,10 @@ function doneSessions(sessions) {
 function programStatus(sessions, state) {
   const today = todayStr();
   const start = state.program_start;
-  const done = doneSessions(sessions);
+  const done = doneSessions(sessions).filter((s) => {
+    const count = Array.isArray(s.plan) ? s.plan.length : s.plan;
+    return count > 0 && (s.takes || []).filter((t) => t.status === 'done').length >= count;
+  });
   const stepsOn = (day) => {
     const set = new Set();
     for (const s of done) if (s.program_day === day) set.add(s.exercise);
@@ -861,7 +864,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
     forceIndex: null, pollT: 0, raf: 0, cards: new Map(), destroyed: false, editing: false,
     anKey: '', afterKey: '', waitPolls: 0, sessionsCache: null, scrolledToResult: false, prepShown: null,
-    thoughtMicBusy: false, pendingTake: null,
+    thoughtMicBusy: false, pendingTake: null, reviewing: null,
   };
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
@@ -870,6 +873,14 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   if (sess) await restorePendingTake();
   v.ex = catalog().exercises[v.exId];
   if (!v.ex) throw new Error('Нет такого упражнения.');
+  const legacySprint = v.exId === 'sprint' && v.session && v.session.plan[1] &&
+    (v.session.plan[1].mode === 'sentences' || (!v.session.plan[1].mode && /предложен/i.test(v.session.plan[1].label || '')));
+  if (legacySprint) v.ex = { ...v.ex,
+    hint: '30 секунд — слова, 90 секунд — предложения',
+    howto: ['За 30 секунд назовите слова, связанные с темой. Только слова, без предложений.',
+      'Затем за 90 секунд составьте с каждым названным словом короткое осмысленное предложение.',
+      'У этой сохранённой попытки осталось прежнее задание. В новом спринте слова нужно соединить в одну историю.'],
+  };
   v.programDay = v.session ? v.session.program_day : (params.get('program') ? todayStr() : null);
   v.topic = v.session ? v.session.topic : (v.exId === 'coach'
     ? ((state.coach_next && state.coach_next.question) || catalog().first_coach_question)
@@ -901,10 +912,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const topicTools = h('div', { class: 'topic-tools' });
   const extraBox = h('div', { class: 'stack', style: 'gap:10px' });
   const stepperEl = h('div', { class: 'stepper' });
+  const topicHint = h('div', { class: 'hint-line' }, icon('info'), v.ex.hint);
   const topicCard = h('section', { class: 'card topic-card' },
     h('div', { class: 'topic-label' }, v.exId === 'coach' ? `${v.ex.topic_label} · уровень ${v.session ? v.session.level : state.coach_level} из 5` : v.ex.topic_label),
     topicTextEl, topicTools,
-    h('div', { class: 'hint-line' }, icon('info'), v.ex.hint),
+    topicHint,
     stepperEl, extraBox);
 
   function renderTopic() {
@@ -960,7 +972,10 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       const t0 = takeAt(0);
       if (t0 && t0.status === 'done') {
         const ws = sprintWords(t0);
-        extraBox.append(h('div', { class: 'small soft' }, ws.length ? `Ваши слова из первой фазы (${ws.length}). Во второй — по предложению с каждым:` : 'В первой фазе слов не распознано.'),
+        const story = plan()[1] && plan()[1].mode === 'story';
+        extraBox.append(h('div', { class: 'small soft' }, ws.length
+          ? (story ? `Ваши ассоциации (${ws.length}). Соедините их в одну связную историю. Можно говорить несколькими предложениями и менять формы слов:` : `Ваши слова из первой фазы (${ws.length}). Во второй — по предложению с каждым:`)
+          : 'В первой фазе слов не распознано.'),
           h('div', { class: 'word-chips' }, ws.map((w) => h('span', { class: 'chip' }, w))));
       } else if (t0 && t0.status === 'processing') {
         extraBox.append(h('div', { class: 'small muted pulse' }, 'Распознаю слова из первой фазы…'));
@@ -991,6 +1006,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const canvas = h('canvas', { class: 'level', 'aria-hidden': 'true', style: 'color:var(--ink-3)' });
   const stage = h('section', { class: 'card stage', 'aria-live': 'polite' },
     h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, canvas, stageActions);
+  const recordingDetails = h('details', { class: 'recording-details', open: true },
+    h('summary', null, 'Запись упражнения'), stage);
+  const workspace = h('div', { class: 'workspace' }, topicCard, recordingDetails);
   const meter = levelMeter(canvas);
   const setRing = (p) => ringFill.setAttribute('stroke-dashoffset', String(C * (1 - Math.max(0, Math.min(1, p)))));
 
@@ -1000,6 +1018,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   function renderStage() {
+    syncReviewLayout();
     stage.dataset.mode = v.stage;
     stage.classList.remove('ending');
     center.replaceChildren();
@@ -1381,6 +1400,33 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const analysisBox = h('section', { class: 'analysis', id: 'analysis' });
   const takesBox = h('section', { class: 'takes' });
   const afterBox = h('div', { class: 'after-actions' });
+  const nextLink = h('a', { class: 'btn exercise-next-link' });
+  const nextDock = h('nav', { class: 'exercise-next-dock', 'aria-label': 'Продолжить тренировку', hidden: true }, nextLink);
+  const nextResize = window.ResizeObserver ? new ResizeObserver((entries) => {
+    const height = entries[0].contentRect.height;
+    if (height > 0) document.body.style.setProperty('--exercise-next-height', Math.ceil(height) + 'px');
+  }) : null;
+  if (nextResize) nextResize.observe(nextDock);
+  function setNextAction(href, label) {
+    nextLink.href = href;
+    nextLink.replaceChildren(h('span', null, label), icon('arrow'));
+  }
+  function syncReviewLayout() {
+    const analysis = v.session && v.session.analysis;
+    const reviewing = !!(analysis && analysis.status === 'done' && analysis.result && allUploaded()
+      && !v.pendingTake && !busy() && v.forceIndex == null);
+    if (reviewing !== v.reviewing) {
+      v.reviewing = reviewing;
+      recordingDetails.open = !reviewing;
+      if (reviewing) howto.open = false;
+      howto.hidden = reviewing;
+      workspace.classList.toggle('is-reviewed', reviewing);
+      recordingDetails.classList.toggle('is-reviewed', reviewing);
+      topicHint.hidden = topicTools.hidden = stepperEl.hidden = extraBox.hidden = reviewing;
+    }
+    nextDock.hidden = !reviewing;
+    document.body.classList.toggle('has-exercise-next', reviewing);
+  }
   const thoughts = thoughtWorkshop({
     session: () => v.session,
     alive: () => !v.destroyed,
@@ -1586,14 +1632,20 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (!sess) { afterBox.replaceChildren(); return; }
     const btns = [];
     if (done) {
-      if (v.exId === 'coach') btns.push(h('a', { class: 'btn', href: '#/ex/coach' }, 'Следующий вопрос', icon('arrow')));
-      else btns.push(h('a', { class: 'btn' + (v.programDay ? ' ghost' : ''), href: freshHref() }, icon('shuffle'), isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
+      setNextAction(v.programDay ? '#/program' : freshHref(), v.programDay ? 'К программе дня' : (v.exId === 'coach' ? 'Следующий вопрос' : isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
+      if (v.exId === 'coach' && !v.programDay) setNextAction('#/ex/coach', 'Следующий вопрос');
       if (v.programDay) {
+        btns.push(h('a', { class: 'btn ghost', href: freshHref() }, icon('shuffle'), 'Ещё раз с новой темой'));
         try {
           v.sessionsCache = await api('/api/sessions');
           const ps = programStatus(v.sessionsCache, app.state);
-          if (ps.next) btns.unshift(h('a', { class: 'btn', href: `#/ex/${ps.next.exercise}?program=1` }, `Дальше: ${catalog().exercises[ps.next.exercise].title}`, icon('arrow')));
-          else btns.unshift(h('a', { class: 'btn', href: '#/program' }, 'Программа дня выполнена', icon('arrow')));
+          if (tok !== v.afterTok || v.destroyed) return;
+          if (ps.next) {
+            const href = `#/ex/${ps.next.exercise}?program=1`, label = `Дальше: ${catalog().exercises[ps.next.exercise].title}`;
+            setNextAction(href, label);
+          } else {
+            setNextAction('#/program', 'Программа дня выполнена');
+          }
         } catch (e) { /* без кнопки программы */ }
       }
     }
@@ -1634,7 +1686,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   function onKey(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     const tag = (e.target && e.target.tagName) || '';
-    if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag) || (e.target && e.target.isContentEditable)) return;
+    if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY', 'A'].includes(tag) || (e.target && e.target.isContentEditable)) return;
     if ($('#settings').open) return;
     if (v.thoughtMicBusy) return;
     if (e.code === 'Space') {
@@ -1670,14 +1722,16 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   window.addEventListener('beforeunload', onUnload);
 
   /* ---- сборка страницы ---- */
+  const howto = h('details', { class: 'howto', open: firstVisit || null }, h('summary', null, 'Как выполнять'),
+    h('ol', null, v.ex.howto.map((x) => h('li', null, x))));
   const head = h('div', null,
     h('a', { class: 'back', href: backHref }, icon('back'), backText),
     h('div', { class: 'ex-head' }, h('h1', null, v.ex.title), h('span', { class: 'chip' }, v.ex.develops),
       v.programDay ? h('span', { class: 'chip dark' }, 'Программа дня') : null),
-    h('details', { class: 'howto', open: firstVisit || null }, h('summary', null, 'Как выполнять'),
-      h('ol', null, v.ex.howto.map((x) => h('li', null, x)))));
+    howto);
 
-  if (!render(ctx, head, h('div', { class: 'workspace' }, topicCard, stage), analysisBox, thoughts.el, takesBox, afterBox)) {
+  if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
+    if (nextResize) nextResize.disconnect();
     thoughts.destroy();
     if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
     document.removeEventListener('keydown', onKey);
@@ -1700,6 +1754,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   return {
     destroy() {
       v.destroyed = true;
+      document.body.classList.remove('has-exercise-next');
+      document.body.style.removeProperty('--exercise-next-height');
+      if (nextResize) nextResize.disconnect();
       clearTimeout(v.pollT);
       cancelAnimationFrame(v.raf);
       if (v.rec) v.rec.cancel();
@@ -2203,7 +2260,7 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
         h('span', { class: 'k' }, name), h('span', { class: 'q' }, st[k] || 'не было'))))));
   }
   if (rt.issues.length) {
-    box.append(h('div', null, h('h3', { style: 'margin-bottom:8px' }, `Недочёты · ${rt.issues.length}`),
+    box.append(h('details', { class: 'issue-details' }, h('summary', null, `Недочёты по фразам · ${rt.issues.length}`),
       h('div', { class: 'issues' }, rt.issues.map((it, issueIndex) => {
         const q = h('button', { type: 'button', title: it.loc ? 'Показать в тексте и послушать' : 'Цитата' }, it.quote);
         q.addEventListener('click', () => {

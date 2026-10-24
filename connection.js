@@ -32,7 +32,7 @@
 
   let base = hosted ? '' : location.origin;
   let connecting = null, ready = false, retryTimer = 0, retryCount = 0;
-  let cover = null, note = null, lastDiscovery = 0;
+  let cover = null, note = null, lastContact = 0, connectionFailed = false;
   let resolveReady;
   const readyPromise = new Promise(resolve => { resolveReady = resolve; });
 
@@ -84,12 +84,19 @@
     if (oldBase && oldBase !== base) window.dispatchEvent(new CustomEvent('trainer:backendchange', {
       detail: { oldBase, newBase: base },
     }));
-    note?.remove(); note = null;
+    connectionSucceeded();
     return base;
   }
 
+  function connectionSucceeded() {
+    const restored = connectionFailed;
+    connectionFailed = false;
+    lastContact = Date.now();
+    note?.remove(); note = null;
+    if (restored) window.dispatchEvent(new CustomEvent('trainer:connectionrestored', { detail: {} }));
+  }
+
   async function discover() {
-    lastDiscovery = Date.now();
     const candidates = [];
     if (typeof config.contentsUrl === 'string') candidates.push(async () => {
       const address = new URL(config.contentsUrl);
@@ -160,6 +167,7 @@
   }
 
   function connectionNote(message) {
+    connectionFailed = true;
     if (!note?.isConnected) {
       note = element('aside', 'speech-connection-note'); note.setAttribute('role', 'status');
       const text = element('span'); const retry = element('button', 'btn ghost', 'Повторить');
@@ -173,13 +181,26 @@
     if (!hosted) return base;
     if (connecting) return connecting;
     connecting = (async () => {
+      lastContact = Date.now();
+      const known = [...new Set([base, read(ENDPOINT_STORE)])].flatMap(value => {
+        try { return [normalizeEndpoint(value)]; }
+        catch (_) { return []; }
+      });
+      const recoverKnown = async () => {
+        for (const candidate of known) if (await alive(candidate)) return activate(candidate);
+        return '';
+      };
       if (!force) {
-        try {
-          const cached = normalizeEndpoint(base || read(ENDPOINT_STORE));
-          if (await alive(cached)) return activate(cached);
-        } catch (_) { /* не отправляем ключ на непроверенный сохранённый адрес */ }
+        const cached = await recoverKnown();
+        if (cached) return cached;
       }
-      return activate(await discover());
+      try { return activate(await discover()); }
+      catch (error) {
+        // Сбой GitHub или Pages не означает, что уже подключённый Mac пропал.
+        const cached = await recoverKnown();
+        if (cached) return cached;
+        throw error;
+      }
     })().catch(error => {
       if (ready) connectionNote('Связь с Mac прервалась. Ответ остаётся на экране; отправку можно повторить после подключения.');
       throw error;
@@ -255,6 +276,34 @@
     return base + (key ? '/u/' + key : '') + relative;
   }
 
+  async function fetchComplete(path, options, timeout, safe) {
+    const controller = new AbortController();
+    const caller = options.signal;
+    const cancel = () => controller.abort(caller.reason || new DOMException('Aborted', 'AbortError'));
+    if (caller.aborted) cancel();
+    else caller.addEventListener('abort', cancel, { once: true });
+    const timer = setTimeout(() => {
+      const error = new Error(safe ? 'Сервер не ответил вовремя. Попробуйте ещё раз.' :
+        'Сервер не ответил вовремя. Отправка могла завершиться — проверьте результат перед повтором.');
+      error.name = 'TrainerRequestTimeoutError';
+      controller.abort(error);
+    }, timeout);
+    try {
+      const response = await abortable(nativeFetch(url(path), { ...options, signal: controller.signal }), controller.signal);
+      // Fetch завершается при получении заголовков. Лимит включает и чтение тела:
+      // оборванный ответ не должен оставлять отправку в вечном ожидании.
+      const emptyBody = options.method === 'HEAD' || [204, 205, 304].includes(response.status) || response.body === null;
+      const body = emptyBody ? null : await abortable(response.arrayBuffer(), controller.signal);
+      if (controller.signal.aborted) throw controller.signal.reason || new DOMException('Aborted', 'AbortError');
+      const complete = new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+      for (const name of ['url', 'redirected', 'type']) Object.defineProperty(complete, name, { value: response[name] });
+      return complete;
+    } finally {
+      clearTimeout(timer);
+      caller.removeEventListener('abort', cancel);
+    }
+  }
+
   async function request(input, init) {
     const isRequest = typeof Request !== 'undefined' && input instanceof Request;
     const source = isRequest ? new Request(input, init) : new Request(new URL(String(input), shell), init);
@@ -272,15 +321,26 @@
       referrerPolicy: hosted ? 'no-referrer' : source.referrerPolicy,
     };
     if ('priority' in source) options.priority = source.priority;
+    const timeout = safe ? 20000 : Math.min(600000, 90000 + Math.ceil((body?.byteLength || 0) / 32768) * 1000);
+    const send = () => fetchComplete(path, options, timeout, safe);
     let failure;
     try {
-      const response = await nativeFetch(url(path), options);
-      if (![502, 503, 504, 530].includes(response.status) || !hosted) return response;
+      const response = await send();
+      if (![502, 503, 504, 530].includes(response.status) || !hosted) {
+        connectionSucceeded();
+        return response;
+      }
       failure = new Error('Соединение с Mac прервалось.');
     } catch (error) {
       if (source.signal.aborted || !hosted) throw error;
+      connectionFailed = true;
+      if (!safe && error.name === 'TrainerRequestTimeoutError') {
+        reconnect(true).catch(() => {});
+        throw error;
+      }
       failure = error;
     }
+    connectionFailed = true;
     try { await abortable(reconnect(true), source.signal); }
     catch (_) {
       if (source.signal.aborted) throw source.signal.reason || new DOMException('Aborted', 'AbortError');
@@ -288,7 +348,17 @@
     }
     if (source.signal.aborted) throw source.signal.reason || new DOMException('Aborted', 'AbortError');
     // A write may already have reached the Mac. Never repeat an upload or mutation here.
-    if (safe) return nativeFetch(url(path), options);
+    if (safe) {
+      try {
+        const response = await send();
+        if (![502, 503, 504, 530].includes(response.status)) connectionSucceeded();
+        else connectionFailed = true;
+        return response;
+      } catch (error) {
+        if (!source.signal.aborted) connectionFailed = true;
+        throw error;
+      }
+    }
     const error = new Error('Не удалось подтвердить отправку. Проверьте, появился ли результат, прежде чем отправлять ещё раз.');
     error.name = 'TrainerAmbiguousRequestError';
     throw error;
@@ -313,7 +383,7 @@
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
-  window.addEventListener('online', () => connectAndReady(true));
+  window.addEventListener('online', () => connectAndReady(false));
   window.addEventListener('hashchange', () => {
     const incoming = launchParts(location.hash);
     if (!validKey(incoming[0])) return;
@@ -327,9 +397,9 @@
     } else history.replaceState(null, '', location.pathname + location.search + '#' + route);
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && Date.now() - lastDiscovery > 60000) connectAndReady(true);
+    if (!document.hidden && Date.now() - lastContact > 60000) connectAndReady(false);
   });
   if (hosted) setInterval(() => {
-    if (ready && !document.hidden && Date.now() - lastDiscovery > 60000) reconnect(true).catch(() => {});
+    if (ready && !document.hidden && Date.now() - lastContact > 60000) reconnect(false).catch(() => {});
   }, 60000);
 })();

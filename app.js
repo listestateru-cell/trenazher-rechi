@@ -166,6 +166,7 @@ async function api(path, opts = {}) {
     operation = await drafts.operation(init.method, path, init.body, init.headers);
     if (drafts.profile() !== requestProfile) throw new Error('Профиль изменился. Откройте нужное занятие заново.');
     init.headers['X-Request-ID'] = opts.requestId || operation.requestId;
+    if (opts.onRequestId) opts.onRequestId(init.headers['X-Request-ID']);
     if (opts.blob) {
       // Повтор старой копии не перезаписывает новую запись другой вкладки.
       if (opts.requestId) savedAudio = { requestId: opts.requestId };
@@ -176,24 +177,45 @@ async function api(path, opts = {}) {
     }
   }
   if (drafts && drafts.profile() !== requestProfile) throw new Error('Профиль изменился. Повторите действие в нужном профиле.');
-  let r;
+  let r, text;
   try {
     r = window.TrainerConnection ? await TrainerConnection.request(path, init) : await fetch(url(path), init);
+    text = await r.text();
   } catch (e) {
-    throw new Error(init.method === 'GET' ? 'Нет связи с Mac. Дождитесь подключения или попробуйте ещё раз.' : 'Подтверждение не получено. Проверьте связь и повторите отправку: тот же запрос не создаст вторую попытку.');
+    // Отмена остаётся отменой; таймаут отправки не доказывает, что Mac выключен.
+    if (e.name === 'AbortError') { e.requestId = init.headers['X-Request-ID']; throw e; }
+    const read = ['GET', 'HEAD'].includes(init.method);
+    const message = read
+      ? (e.name === 'TrainerRequestTimeoutError' ? 'Сервер долго не отвечает. Попробуйте ещё раз.' : 'Сейчас нет связи с сервером. Попробуйте ещё раз после подключения.')
+      : (opts.blob ? 'Нет подтверждения отправки. Запись сохранена; проверьте связь и повторите отправку.' : 'Нет подтверждения отправки. Проверьте связь и состояние занятия перед повтором.');
+    const error = new Error(message);
+    error.name = e.name || 'TrainerTransportError';
+    error.cause = e;
+    error.requestId = init.headers['X-Request-ID'];
+    throw error;
   }
-  const text = await r.text();
   let data = null;
   try { data = text ? JSON.parse(text) : {}; } catch (e) { data = null; }
   if (!r.ok) {
     if (operation && data && r.status < 500 && !data.request_state) await drafts.remove(operation.id, undefined, requestProfile);
-    throw new Error((data && data.error) || `Ошибка сервера (${r.status})`);
+    const error = new Error((data && data.error) || `Ошибка сервера (${r.status})`);
+    error.status = r.status;
+    error.requestState = data && data.request_state;
+    error.requestId = init.headers['X-Request-ID'];
+    throw error;
   }
   // Непрочитанный ответ — ошибка, а не пустой объект: пустышка затирала открытую сессию.
-  if (data === null) throw new Error('Сервер ответил непонятно. Обновите страницу.');
+  if (data === null) {
+    const error = new Error('Сервер ответил непонятно. Проверьте состояние занятия и повторите отправку при необходимости.');
+    error.requestId = init.headers['X-Request-ID'];
+    throw error;
+  }
   if (operation) await drafts.remove(operation.id, undefined, requestProfile);
   if (savedAudio) await drafts.remove('audio:' + path, savedAudio.requestId, requestProfile);
   if (drafts && drafts.profile() !== requestProfile) throw new Error('Профиль изменился. Откройте нужное занятие заново.');
+  if (savedAudio) window.dispatchEvent(new CustomEvent('trainer:audiosent', {
+    detail: { path, requestId: savedAudio.requestId, profile: requestProfile, session: data },
+  }));
   return data;
 }
 
@@ -839,12 +861,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
     forceIndex: null, pollT: 0, raf: 0, cards: new Map(), destroyed: false, editing: false,
     anKey: '', afterKey: '', waitPolls: 0, sessionsCache: null, scrolledToResult: false, prepShown: null,
-    thoughtMicBusy: false,
+    thoughtMicBusy: false, pendingTake: null,
   };
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
   if (sess) { v.session = sess; v.exId = sess.exercise; }
   if (sess && isLearningSession(sess)) return LearningSessionView(ctx, sess);
+  if (sess) await restorePendingTake();
   v.ex = catalog().exercises[v.exId];
   if (!v.ex) throw new Error('Нет такого упражнения.');
   v.programDay = v.session ? v.session.program_day : (params.get('program') ? todayStr() : null);
@@ -1010,6 +1033,17 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       stageSub.textContent = lim ? 'секунд осталось · пробел — закончить раньше' : 'идёт запись · пробел — закончить';
       return;
     }
+    if (v.pendingTake) {
+      const pending = v.pendingTake;
+      setRing(0);
+      center.append(pending.sending ? h('div', { class: 'spinner' }) : icon('upload', 'big-ico'));
+      stageTitle.textContent = pending.sending ? 'Отправляю запись…' : 'Запись ждёт отправки';
+      stageSub.textContent = pending.sending ? 'Сохраняю эту попытку. Повторно записывать её не нужно.' : (pending.error || 'Подтверждение ещё не получено. Можно повторить отправку этой записи.');
+      stageActions.append(
+        h('button', { class: 'btn', type: 'button', disabled: pending.sending, onclick: retryPendingTake }, pending.sending ? 'Отправляю…' : 'Повторить отправку'),
+        h('a', { class: 'btn ghost', href: pending.downloadUrl, download: 'речь-' + (pending.idx + 1) + (pending.blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать запись'));
+      return;
+    }
     if (v.stage === 'upload') {
       setRing(0);
       center.append(h('div', { class: 'spinner' }));
@@ -1066,6 +1100,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function startTake() {
+    if (v.pendingTake) { renderStage(); return; }
     if (busy() || v.destroyed) return;
     const idx = nextIndex();
     if (idx == null) return;
@@ -1194,27 +1229,89 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function sendTake(idx, blob, name) {
+    if (v.pendingTake && (v.pendingTake.sending || v.pendingTake.blob !== blob || v.pendingTake.idx !== idx)) return;
+    let pending = v.pendingTake;
+    let failed = false;
     try {
       if (blob.size < 1200) throw new Error('Запись получилась пустой — проверьте микрофон в настройках.');
+      if (!pending) {
+        pending = v.pendingTake = { idx, blob, name, requestId: null, sending: false, error: '',
+          profile: window.TrainerDrafts && TrainerDrafts.profile(), downloadUrl: URL.createObjectURL(blob), lastReconcile: 0 };
+      }
+      if (window.TrainerDrafts && pending.profile !== TrainerDrafts.profile()) throw new Error('Профиль изменился. Откройте нужное занятие заново.');
+      pending.sending = true;
+      v.stage = 'upload';
+      renderStage();
       const q = name ? `?name=${encodeURIComponent(name)}` : '';
-      v.session = await api(`/api/sessions/${v.session.id}/takes/${idx}${q}`, { method: 'PUT', blob });
+      const fresh = await api(`/api/sessions/${v.session.id}/takes/${idx}${q}`, { method: 'PUT', blob,
+        requestId: pending.requestId || undefined, onRequestId: (id) => { pending.requestId = id; } });
+      v.session = fresh;
+      if (v.pendingTake === pending) { URL.revokeObjectURL(pending.downloadUrl); v.pendingTake = null; }
       v.forceIndex = null;
       v.waitPolls = 0;
       v.stage = nextIndex() == null ? 'complete' : 'between';
       v.stageError = '';
     } catch (e) {
+      failed = e.name !== 'AbortError';
+      if (pending) {
+        if (e.requestId) pending.requestId = e.requestId;
+        pending.error = e.name === 'AbortError' ? 'Отправка отменена. Запись сохранена; её можно отправить снова.' : e.message;
+      }
       v.stage = 'error';
       v.stageError = e.message;
       mic.close();
+    } finally {
+      if (pending) pending.sending = false;
     }
     renderStage();
     renderDynamic();
     schedulePoll();
+    if (failed && pending && !v.destroyed) reconcilePendingTake(pending);
     if (v.stage === 'complete') {
       mic.close();
       const card = v.cards.get(idx);
       if (card) card.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  }
+
+  async function restorePendingTake() {
+    if (!v.session || !window.TrainerDrafts || v.pendingTake) return;
+    const prefix = `/api/sessions/${v.session.id}/takes/`;
+    const records = await TrainerDrafts.list();
+    if (v.destroyed || v.pendingTake) return;
+    for (const record of records) {
+      if (record.kind !== 'audio' || !record.path.startsWith(prefix) || !record.blob || record.blob.size < 1200) continue;
+      const match = /^(\d{1,2})(?:\?(.*))?$/.exec(record.path.slice(prefix.length));
+      if (!match || !v.session.plan[Number(match[1])]) continue;
+      v.pendingTake = { idx: Number(match[1]), blob: record.blob, name: new URLSearchParams(match[2] || '').get('name') || '',
+        requestId: record.requestId, profile: record.profile || TrainerDrafts.profile(), sending: false, lastReconcile: 0,
+        error: 'На этом устройстве осталась запись без подтверждения. Можно повторить её отправку.', downloadUrl: URL.createObjectURL(record.blob) };
+      break;
+    }
+  }
+
+  function retryPendingTake() {
+    const pending = v.pendingTake;
+    if (!pending || pending.sending || v.destroyed) return;
+    return sendTake(pending.idx, pending.blob, pending.name);
+  }
+
+  async function reconcilePendingTake(pending = v.pendingTake) {
+    if (!pending || v.destroyed || pending.sending || pending.reconciling || Date.now() - pending.lastReconcile < 3000) return;
+    if (window.TrainerDrafts && pending.profile !== TrainerDrafts.profile()) return;
+    pending.lastReconcile = Date.now();
+    pending.reconciling = true;
+    try {
+      const fresh = await api(`/api/sessions/${v.session.id}`);
+      if (v.destroyed || v.pendingTake !== pending || pending.sending) return;
+      v.session = fresh;
+      // Чужая вкладка или старая попытка могла заполнить тот же индекс.
+      // Копию удаляет только подтверждённый PUT с нашим X-Request-ID.
+      renderDynamic();
+      renderStage();
+      schedulePoll();
+    } catch (e) { /* одна сверка; следующий шанс — восстановление связи или ручной повтор */ }
+    finally { pending.reconciling = false; }
   }
 
   async function uploadFile(file) {
@@ -1226,7 +1323,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   function rerecord(i) {
-    if (busy()) return;
+    if (busy() || v.pendingTake) return;
     v.forceIndex = i;
     v.stage = 'between';
     renderStage();
@@ -1287,7 +1384,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const thoughts = thoughtWorkshop({
     session: () => v.session,
     alive: () => !v.destroyed,
-    canRecord: () => !busy(),
+    canRecord: () => !busy() && !v.pendingTake,
     recordingChanged: (recording) => { v.thoughtMicBusy = recording; renderStage(); },
     // Ответ без номера сессии — не сессия: не даём ему затереть открытую.
     changed: (session) => { if (!v.destroyed && session && session.id) { v.session = session; renderDynamic(); schedulePoll(); } },
@@ -1551,6 +1648,24 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
   }
   document.addEventListener('keydown', onKey);
+  function onAudioSent(event) {
+    const pending = v.pendingTake, sent = event.detail || {};
+    if (!pending || pending.sending || v.destroyed || sent.requestId !== pending.requestId || sent.profile !== pending.profile) return;
+    if (typeof sent.path !== 'string' || sent.path.split('?')[0] !== `/api/sessions/${v.session.id}/takes/${pending.idx}`) return;
+    URL.revokeObjectURL(pending.downloadUrl);
+    v.pendingTake = null;
+    if (sent.session && sent.session.id === v.session.id) v.session = sent.session;
+    v.forceIndex = null;
+    v.stage = nextIndex() == null ? 'complete' : 'between';
+    v.stageError = '';
+    renderDynamic();
+    renderStage();
+    schedulePoll();
+  }
+  const onConnectionRestored = () => { if (v.pendingTake) reconcilePendingTake(); };
+  window.addEventListener('trainer:audiosent', onAudioSent);
+  window.addEventListener('trainer:backendchange', onConnectionRestored);
+  window.addEventListener('trainer:connectionrestored', onConnectionRestored);
   const onUnload = (e) => { if (v.stage === 'rec' || v.thoughtMicBusy) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', onUnload);
 
@@ -1564,7 +1679,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   if (!render(ctx, head, h('div', { class: 'workspace' }, topicCard, stage), analysisBox, thoughts.el, takesBox, afterBox)) {
     thoughts.destroy();
+    if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('trainer:audiosent', onAudioSent);
+    window.removeEventListener('trainer:backendchange', onConnectionRestored);
+    window.removeEventListener('trainer:connectionrestored', onConnectionRestored);
     window.removeEventListener('beforeunload', onUnload);
     return null;
   }
@@ -1587,8 +1706,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       thoughts.destroy();
       meter.stop();
       mic.close();
+      if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
       v.cards.forEach((c) => c.destroy());
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('trainer:audiosent', onAudioSent);
+      window.removeEventListener('trainer:backendchange', onConnectionRestored);
+      window.removeEventListener('trainer:connectionrestored', onConnectionRestored);
       window.removeEventListener('beforeunload', onUnload);
     },
   };

@@ -3,7 +3,8 @@
 window.TrainerProfiles = {
   avatar(person, extraClass = '') {
     const name = person && (person.name || person.username) || 'Участник';
-    const initial = Array.from(name.replace(/^@/, '').trim())[0] || '?';
+    const initialName = person && person.is_test ? name.replace(/^Тест\s*·\s*/u, '') : name;
+    const initial = Array.from(initialName.replace(/^@/, '').trim())[0] || '?';
     const node = h('span', { class: `profile-avatar ${extraClass}`, 'aria-hidden': 'true' },
       h('span', { class: 'profile-initial' }, initial.toLocaleUpperCase('ru-RU')));
     if (person && /^\d{1,20}$/.test(String(person.id || person.user_id || '')) && /^[a-f0-9]{64}$/.test(person.avatar_version || '')) {

@@ -110,6 +110,55 @@
 .groups-self { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .groups-ranking-denominator { color: var(--ink-2); white-space: nowrap; font-weight: 400; }
 .groups-ranking-points { font-weight: 650; }
+.groups-week-awards { display: flex; flex-direction: column; gap: 12px; }
+.groups-award-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.groups-award { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 20px; }
+.groups-award-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.groups-award-heading h3 { font-size: 17px; line-height: 1.4; }
+.groups-award-heading .chip { font-size: 12px; }
+.groups-award-heading .groups-demo-label { margin: 0; }
+.groups-award-winners { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.groups-award-winners li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.groups-award-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.groups-award-person strong { font-size: 16px; font-weight: 600; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.groups-award-avatar { width: 44px; height: 44px; border-radius: 50%; font-size: 18px; }
+.groups-award-score { flex: none; font-size: 19px; font-weight: 650; white-space: nowrap; }
+.groups-award-score small { display: block; text-align: right; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.groups-award-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; align-self: flex-start; margin-top: auto; }
+.groups-award-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.groups-standings .groups-rank-col { width: 52px; }
+.groups-standings .groups-numeric-col { width: 100px; }
+.groups-standings .groups-standing-row > th, .groups-standings .groups-standing-row > td { padding-block: 8px; }
+.groups-standings .groups-ranking-person { padding-inline: 0; }
+.groups-standing-scale { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; }
+.groups-standings .groups-ranking-points { font-size: 21px; white-space: nowrap; }
+.groups-rank-badge { display: inline-grid; place-items: center; min-width: 30px; min-height: 30px; border-radius: 8px; font-size: 15px; }
+.groups-rank-first { background: var(--surface-2); color: var(--accent-ink); font-weight: 700; }
+.groups-standing-trigger { display: grid; grid-template-columns: 44px minmax(0,1fr) 14px; align-items: center; gap: 12px; width: 100%; min-height: 60px; padding: 8px 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; touch-action: manipulation; transition: background .16s ease; }
+.groups-standing-trigger:hover, .groups-standing-trigger:active { background: var(--surface-2); }
+.groups-standing-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.groups-standing-trigger .groups-standing-avatar { width: 44px; height: 44px; border-radius: 50%; font-size: 18px; }
+.groups-standing-identity { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
+.groups-standing-name { font-size: 16px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
+.groups-standing-self { color: var(--ink-2); font-weight: 400; white-space: nowrap; }
+.groups-standing-identity .groups-demo-label { margin: 0; padding: 1px 5px; font-size: 11px; }
+.groups-standing-chevron { justify-self: center; width: 8px; height: 8px; border-right: 1.5px solid var(--ink-2); border-bottom: 1.5px solid var(--ink-2); transform: rotate(45deg); transition: transform .16s ease; }
+.groups-standing-trigger[aria-expanded="true"] .groups-standing-chevron { transform: rotate(225deg); }
+.groups-standings .groups-standing-details > td { padding: 0; }
+.groups-participant-results { display: flex; flex-direction: column; gap: 14px; padding: 18px; background: var(--surface-2); border-radius: var(--radius-sm); margin-bottom: 10px; }
+.groups-participant-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.groups-participant-heading h3 { font-size: 17px; line-height: 1.4; }
+.groups-participant-heading .profile-test-label { margin: 0; }
+.groups-participant-results > p:empty { display: none; }
+.groups-participant-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 0; }
+.groups-participant-metrics > div { display: flex; flex-direction: column; gap: 4px; }
+.groups-participant-results dt { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.groups-participant-results dd { margin: 0; font-size: 17px; font-weight: 600; }
+.groups-participant-components { padding-top: 14px; border-top: 1px solid var(--line-2); }
+.groups-participant-components h4 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.groups-participant-components dl { display: grid; gap: 8px; margin: 0; }
+.groups-participant-components dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.groups-participant-components dd { font-size: 15px; white-space: nowrap; }
 .groups-view summary { cursor: pointer; min-height: 44px; padding-top: 10px; padding-bottom: 10px; font-weight: 600; }
 .groups-view .chip { white-space: normal; }
 .groups-rule-list { margin: 12px 0 0; padding-left: 24px; display: flex; flex-direction: column; gap: 12px; }
@@ -157,6 +206,14 @@
   .groups-ranking .groups-numeric-col { width: 60px; }
   .groups-ranking thead th { font-size: 12px; }
   .groups-ranking-denominator { display: block; font-size: 12px; margin-top: 2px; }
+  .groups-award-grid { grid-template-columns: minmax(0,1fr); }
+  .groups-standings .groups-rank-col { width: 34px; }
+  .groups-standings .groups-numeric-col { width: 70px; }
+  .groups-standings .groups-ranking-points { font-size: 18px; }
+  .groups-standings .groups-rank { padding-left: 0; }
+  .groups-standing-trigger { gap: 8px; padding-inline: 3px; grid-template-columns: 44px minmax(0,1fr) 10px; }
+  .groups-rank-badge { min-width: 26px; min-height: 30px; }
+  .groups-participant-results { padding: 16px 14px; }
   .groups-friend-list li { flex-wrap: wrap; }
   .groups-friend-list li > .small { flex-basis: 100%; margin-left: 52px; margin-top: -6px; }
   .groups-join-card h2 { font-size: 24px; }

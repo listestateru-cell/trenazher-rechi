@@ -9,7 +9,7 @@ window.TrainerGroups = (() => {
   const score = (value) => value == null || !Number.isFinite(value) ? 'Пока нет' : value.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
   const rating = (value) => value == null || !Number.isFinite(value) ? 'Пока нет' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
   const nameOf = (user) => user && (user.name || (user.username ? `@${user.username}` : 'Участник')) || 'Участник';
-  const avatar = (user, size = '') => window.TrainerProfiles ? TrainerProfiles.avatar(user, size) : h('span', { class: 'groups-person-mark', 'aria-hidden': 'true' }, nameOf(user).slice(0, 1).toUpperCase());
+  const avatar = (user, size = '') => window.TrainerProfiles ? TrainerProfiles.avatar(user, size) : h('span', { class: `groups-person-mark${size ? ` ${size}` : ''}`, 'aria-hidden': 'true' }, nameOf(user).slice(0, 1).toUpperCase());
   const shortDate = (day, weekday = false) => {
     const parsed = new Date(`${day}T12:00:00`);
     return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(weekday ? { weekday: 'long' } : {}) });
@@ -66,6 +66,7 @@ window.TrainerGroups = (() => {
     const invitedPeople = new Set();
     let testOpen = false, testUsers = null, testBusy = false, testError = null;
     const testLinks = new Map();
+    const expandedResults = new Set();
     const alive = () => !destroyed && ctx.alive();
     const refresh = h('button', { class: 'btn ghost groups-refresh', type: 'button', onclick: () => load() }, icon('redo'), 'Обновить');
     render(ctx, root);
@@ -291,6 +292,7 @@ window.TrainerGroups = (() => {
           ratingBreakdown(self)) : null,
         week.current && today ? todayCard(group, today) : null,
         duelsCard(group),
+        weekAwards(group),
         leaderboard(group),
         group.is_leader || app.state && app.state.is_owner ? peoplePanel() : null,
         !self ? ratingBreakdown(null) : null,
@@ -301,7 +303,7 @@ window.TrainerGroups = (() => {
             'Рейтинг складывается из оценки тренера (до 60), словесных поединков (до 30) и регулярности (до 10).',
             'Пять выполненных заданий за день дают 2 балла регулярности. За неделю можно набрать 14. Неполный день дополнительных баллов не даёт.',
             'В словесном раунде за 60 секунд 20 зачтённых слов дают оценку 1, 23 слова — 2. Каждые следующие три слова добавляют единицу, до 10. Меньше 20 слов — 0.',
-            'Место зависит от итогового рейтинга. При равных результатах участники делят место. Дополнительных требований для попадания в рейтинг нет.',
+            'Место зависит от итогового рейтинга. При равных результатах участники делят место. У турнира поединков свой победитель, его определяет финал.',
             'В понедельник начинается новая неделя с нуля. Результаты прошлых недель остаются в архиве.',
           ]).map((rule) => h('li', null, rule))), h('p', { class: 'small soft groups-privacy' }, joinNotice)),
         group.is_leader || app.state && app.state.is_owner ? h('article', { class: 'card groups-invite-card' }, sectionHeading('Пригласить в эту группу'),
@@ -389,14 +391,14 @@ window.TrainerGroups = (() => {
         h('div', { class: 'groups-word-thresholds', 'aria-label': 'Число слов и оценка словесного раунда' }, Array.from({ length: 10 }, (_, index) => h('div', null,
           h('span', { class: 'num' }, `${20 + index * 3}${index === 9 ? '+' : ''} слов`), h('strong', { class: 'num' }, `${index + 1} / 10`)))),
         h('p', { class: 'small soft' }, 'Для общего рейтинга берём среднюю оценку словесных раундов этой недели. Задания обычного словесного спринта оцениваются отдельно.'),
-        h('p', { class: 'small soft' }, 'В рейтинг можно попасть с любым числом выполненных заданий. Если результатов ещё мало, показываем предварительный итог.'));
+        h('p', { class: 'small soft' }, 'Пока есть не все виды результатов, рейтинг считается предварительным.'));
     }
     function duelsCard(group) {
       const week = group.week || {};
       const route = `#/groups/${enc(group.id)}/duels${week.current || !week.start ? '' : `?week=${enc(week.start)}`}`;
       return h('article', { class: 'card groups-duels-card' },
         h('div', { class: 'groups-duels-heading' }, icon('scales'), h('h2', null, 'Поединки недели')),
-        h('p', { class: 'soft' }, 'В течение недели участники встречаются друг с другом. В воскресенье четверо лучших играют полуфиналы: первое место с четвёртым, второе с третьим. Затем финал и матч за третье место.'),
+        h('p', { class: 'soft' }, 'В субботу участники играют друг с другом в круговом этапе. В воскресенье четверо лучших проводят полуфиналы: первое место с четвёртым, второе с третьим. Затем финал и матч за третье место.'),
         h('p', { class: 'small soft' }, 'У соперников одинаковые условия. Словесный раунд длится 60 секунд и влияет на общий рейтинг. Другим участникам доступны общие результаты, записи и тексты остаются личными.'),
         h('a', { class: 'btn ghost', href: route }, week.current ? 'Открыть поединки' : 'Поединки этой недели', icon('arrow')));
     }
@@ -430,22 +432,80 @@ window.TrainerGroups = (() => {
           href ? h('a', { class: 'btn ghost groups-task-action', href, 'aria-label': `${task.done ? 'Посмотреть результат' : task.session_id ? 'Продолжить' : 'Начать'}: ${task.title || 'упражнение'}` }, task.done ? 'Результат' : task.session_id ? 'Продолжить' : 'Начать', icon('arrow')) : null);
       }));
     }
+    function weekAwards(group) {
+      const rows = list(group.leaderboard), week = group.week || {}, tournament = group.competition || {};
+      const leaders = rows.filter((person) => person.rank === 1);
+      const hasResults = leaders.some((person) => person.rating > 0 || person.completed > 0 || person.duels_played > 0);
+      const winner = tournament.finished === true && tournament.winner_id != null
+        ? list(tournament.podium).find((person) => String(person.id ?? person.user_id) === String(tournament.winner_id))
+          || rows.find((person) => String(person.user_id) === String(tournament.winner_id)) : null;
+      const route = `#/groups/${enc(group.id)}/duels${week.current || !week.start ? '' : `?week=${enc(week.start)}`}`;
+      const identity = (person) => h('div', { class: 'groups-award-person' }, avatar(person, 'groups-award-avatar'), h('strong', null, nameOf(person)));
+      return h('section', { class: 'groups-week-awards', 'aria-label': 'Два зачёта недели' },
+        h('h2', null, 'Два зачёта недели'),
+        h('p', { class: 'small soft' }, 'У рейтинга и турнира свои победители. В поединках решает результат финала.'),
+        h('div', { class: 'groups-award-grid' },
+          h('article', { class: 'card groups-award', 'data-award': 'rating' },
+            h('div', { class: 'groups-award-heading' }, h('h3', null, 'Рейтинг недели'), week.current ? h('span', { class: 'chip' }, 'Предварительно') : null,
+              hasResults && leaders.some((person) => person.demonstration) ? h('span', { class: 'groups-demo-label' }, 'Демо') : null),
+            hasResults ? h('ul', { class: 'groups-award-winners' }, leaders.map((person) => h('li', null, identity(person), h('span', { class: 'groups-award-score num' }, rating(person.rating), h('small', null, ' / 100')))))
+              : h('p', { class: 'small soft' }, 'Первые результаты определят лидера рейтинга.'),
+            hasResults ? h('p', { class: 'small soft' }, leaders.length > 1 ? 'Участники делят первое место по баллам.' : week.current ? 'Лидер по баллам на данный момент.' : 'Первое место по итоговым баллам.') : null),
+          h('article', { class: 'card groups-award', 'data-award': 'tournament' },
+            h('div', { class: 'groups-award-heading' }, h('h3', null, 'Турнир поединков'), tournament.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null),
+            winner ? [identity(winner), h('p', { class: 'small soft' }, 'Первое место за победу в финале.')]
+              : h('p', { class: 'small soft' }, tournament.finished ? 'Итог турнира доступен в сетке.' : week.current ? 'Победитель определится в воскресенье.' : 'Финал этой недели не завершён.'),
+            h('a', { class: 'groups-award-link', href: route }, 'Турнирная сетка', icon('arrow')))));
+    }
     function leaderboard(group) {
       const rows = list(group.leaderboard);
       return h('article', { class: 'card groups-leaderboard' }, sectionHeading('Рейтинг недели', h('span', { class: 'small soft' }, `${count(rows.length)} ${plural(rows.length, 'участник', 'участника', 'участников')}`)),
-        h('p', { class: 'small soft' }, 'Место зависит от итогового рейтинга. Более высокая оценка тренера может вывести вперёд даже при меньшем числе упражнений. При равных результатах место общее.'),
-        rows.length ? h('table', { class: 'groups-ranking' }, h('caption', { class: 'groups-sr-only' }, 'Общий рейтинг участников'),
-          h('thead', null, h('tr', null, h('th', { scope: 'col', class: 'groups-rank-col', 'aria-label': 'Место' }, '№'), h('th', { scope: 'col' }, 'Участник'), h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Рейтинг'), h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Тренер'))),
-          h('tbody', null, rows.map((person) => h('tr', { class: person.is_self ? 'groups-self' : '' },
-            h('td', { class: 'groups-rank num' }, person.rank || '—'),
-            h('th', { scope: 'row', class: 'groups-ranking-person' }, h('div', { class: 'profile-identity' }, avatar(person, 'profile-small'), h('div', null, h('span', null, nameOf(person)), person.is_test ? h('span', { class: 'profile-test-label' }, 'Тест') : null,
-              person.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null)), h('span', { class: 'groups-person-label small' }, [person.is_self ? 'Вы' : '', person.is_leader ? 'Руководитель' : ''].filter(Boolean).join(' · ')),
-              h('span', { class: 'groups-person-label small' }, `Упражнений: ${count(person.completed)} · Дней: ${count(person.active_days)}`),
-              h('span', { class: 'groups-person-label small' }, `Слова: ${score(person.vocabulary_grade)} / 10 · Регулярность: ${count(person.training_points)} / 14`),
-              person.provisional ? h('span', { class: 'groups-person-label small' }, 'Предварительный рейтинг') : null),
-            h('td', { class: 'groups-ranking-points num' }, rating(person.rating), h('span', { class: 'groups-ranking-denominator small' }, ' / 100')),
-            h('td', { class: 'groups-ranking-score num' }, person.average_score == null ? h('span', { 'aria-label': 'Оценки пока нет' }, '—') : score(person.average_score), person.average_score == null ? null : h('span', { class: 'groups-ranking-denominator small' }, ' / 10'))))))
+        h('p', { class: 'small soft' }, 'Нажмите на участника, чтобы посмотреть результаты за неделю.'),
+        rows.length ? h('table', { class: 'groups-ranking groups-standings' }, h('caption', { class: 'groups-sr-only' }, 'Место, участник и рейтинг из 100. Подробности раскрываются по нажатию на имя.'),
+          h('thead', null, h('tr', null, h('th', { scope: 'col', class: 'groups-rank-col', 'aria-label': 'Место' }, '№'), h('th', { scope: 'col' }, 'Участник'),
+            h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Рейтинг', h('span', { class: 'groups-standing-scale' }, 'из 100')))),
+          h('tbody', null, rows.flatMap((person, index) => participantRows(group, person, index))))
           : h('p', { class: 'soft' }, 'Рейтинг появится, когда в группу вступят участники.'));
+    }
+    function participantRows(group, person, index) {
+      const key = String(person.user_id ?? index), id = `groups-result-${enc(group.id)}-${enc(key)}`;
+      const opened = expandedResults.has(key);
+      const ratingValue = Number.isFinite(person.rating) ? rating(person.rating) : '—';
+      const panel = h('section', { id, class: 'groups-participant-results', role: 'region', 'aria-label': `Результаты за неделю: ${nameOf(person)}` }, participantResults(person));
+      const detailRow = h('tr', { class: 'groups-standing-details', hidden: !opened }, h('td', { colspan: 3 }, panel));
+      detailRow.hidden = !opened;
+      const trigger = h('button', { class: 'groups-standing-trigger', type: 'button', 'aria-expanded': String(opened), 'aria-controls': id,
+        'aria-label': `Результаты за неделю: ${nameOf(person)}`, onclick: () => {
+          const show = !expandedResults.has(key);
+          if (show) expandedResults.add(key); else expandedResults.delete(key);
+          detailRow.hidden = !show;
+          trigger.setAttribute('aria-expanded', String(show));
+        } }, avatar(person, 'groups-standing-avatar'),
+      h('span', { class: 'groups-standing-identity' }, h('span', { class: 'groups-standing-name' }, nameOf(person), person.is_self ? h('span', { class: 'groups-standing-self small' }, ' · вы') : null),
+        person.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null),
+      h('span', { class: 'groups-standing-chevron', 'aria-hidden': 'true' }));
+      return [h('tr', { class: `groups-standing-row${person.is_self ? ' groups-self' : ''}`, 'data-participant': key },
+        h('td', { class: 'groups-rank num' }, h('span', { class: person.rank === 1 ? 'groups-rank-badge groups-rank-first' : 'groups-rank-badge' }, person.rank || '—')),
+        h('th', { scope: 'row', class: 'groups-ranking-person' }, trigger),
+        h('td', { class: 'groups-ranking-points num', 'aria-label': Number.isFinite(person.rating) ? `Рейтинг: ${ratingValue} из 100` : 'Рейтинг пока не рассчитан' }, ratingValue)), detailRow];
+    }
+    function participantResults(person) {
+      const components = person.rating_components || {};
+      const trainer = person.trainer_average ?? person.average_score;
+      const metric = (title, value) => h('div', null, h('dt', null, title), h('dd', { class: 'num' }, value));
+      return [h('div', { class: 'groups-participant-heading' }, h('h3', null, 'Результаты за неделю'),
+        person.is_test ? h('span', { class: 'profile-test-label' }, 'Тестовый профиль') : null),
+      h('p', { class: 'small soft' }, [person.username ? `@${person.username}` : '', person.is_leader ? 'Руководитель группы' : '', person.is_self ? 'Ваш результат' : ''].filter(Boolean).join(' · ')),
+      person.demonstration ? h('p', { class: 'small soft' }, 'Демонстрационные результаты. Аудиозаписей и анализа тренера не было.') : null,
+      h('dl', { class: 'groups-participant-metrics' },
+        metric('Упражнения', `${count(person.completed)} из 35`), metric('Полные дни', `${count(person.completed_days)} из 7`),
+        metric('Дни занятий', count(person.active_days)), metric('Оценка тренера', trainer == null ? 'Пока нет' : `${score(trainer)} / 10`),
+        metric('Словарный навык', `${score(person.vocabulary_grade)} / 10`), metric('Регулярность', `${count(person.training_points)} / 14`),
+        person.duels_played != null ? metric('Поединки', count(person.duels_played)) : null,
+        person.vocabulary_count != null ? metric('В среднем слов за раунд', score(person.vocabulary_count)) : null),
+      h('div', { class: 'groups-participant-components' }, h('h4', null, 'Баллы рейтинга'),
+        h('dl', null, metric('Тренер', `${rating(components.trainer)} / 60`), metric('Слова в поединках', `${rating(components.vocabulary)} / 30`), metric('Регулярность', `${rating(components.training)} / 10`))),
+      person.provisional ? h('p', { class: 'small soft' }, 'Рейтинг предварительный: пока есть не все виды результатов.') : null];
     }
     function weekDays(group, days) {
       const rest = days.filter((day) => !group.week.current || !day.today);

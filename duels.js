@@ -106,7 +106,12 @@ window.TrainerDuels = (() => {
         action(loading ? 'Обновляю…' : 'Обновить', () => load(), loading || recording || starting)),
         error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
         data ? h('p', { class: 'soft' }, data.week && (data.week.label || `${data.week.start} — ${data.week.end}`) || '', ' · ',
-          ({ demo: 'Демонстрационный круговой этап', demo_finished: 'Демонстрация завершённой недели', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём проверки записанных ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
+          ({ scheduled: 'Ожидаем субботу', demo: 'Демонстрационный круговой этап', demo_finished: 'Демонстрация завершённой недели', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём завершения начатых встреч и проверки ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
+        data && !demoWeek && data.phase === 'scheduled' ? h('section', { class: 'card stack', role: 'status', 'aria-label': 'Расписание поединков' },
+          h('h2', null, 'Поединки — в выходные'),
+          h('p', null, 'В субботу каждый играет с каждым. В воскресенье — полуфиналы, финал и матч за третье место. Сейчас можно посмотреть соперников и договориться о времени.'),
+          data.schedule && data.schedule.league_date && data.schedule.finals_date ? h('p', { class: 'small soft' },
+            `Круговой этап: ${data.schedule.league_date.split('-').reverse().join('.')}. Финалы: ${data.schedule.finals_date.split('-').reverse().join('.')}.`) : null) : null,
         data && (data.demonstration || matches.some(demonstration)) ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные поединки' },
           h('h2', null, 'Демонстрационные поединки'), h('p', null, 'Количество слов задано для примера. Микрофон, записи и тренер не использовались.'),
           h('p', { class: 'small soft' }, 'Баллы навыка меняют общий рейтинг группы. Турнирные очки показывают, кто выиграл встречи.')) : null,
@@ -114,7 +119,7 @@ window.TrainerDuels = (() => {
         data && !demoWeek && data.podium && data.podium.length ? h('div', { class: 'card stack' }, h('h2', null, 'Итог турнира'),
           h('ol', { class: 'duel-podium' }, data.podium.slice(0,3).map((id, index) => h('li', null, h('span', { class: 'num' }, `${index + 1} место`), h('strong', null, ((data.table || []).find((row) => row.user_id === id) || {}).name || 'Участник'))))) : null,
         h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит поединок и за что начисляют баллы'),
-          h('ol', { class: 'list' }, h('li', null, 'Договоритесь о времени. Оба откройте эту страницу и нажмите «Готов». Сначала браузер проверит микрофон.'),
+          h('ol', { class: 'list' }, h('li', null, 'Круговой этап проходит в субботу, финальные встречи — в воскресенье. Договоритесь о времени. В день встречи оба откройте эту страницу и нажмите «Готов». Сначала браузер проверит микрофон.'),
             h('li', null, 'После подтверждения обоих начнётся общий отсчёт. Слово откроется одновременно с началом минуты. Называйте подходящие слова по одному.'),
             h('li', null, 'Тренер проверит смысловую связь. Повторы, формы одного слова и посторонние слова не учитываются. Разбор своего ответа можно открыть отдельно.'),
             h('li', null, '20–22 подходящих слова дают 1 балл навыка, 23–25 — 2, далее по баллу за каждые 3 слова, максимум 10 за 47 и больше. До 20 слов — 0.'),
@@ -133,7 +138,7 @@ window.TrainerDuels = (() => {
             h('h2', null, 'Демонстрационные встречи'), h('div', { class: 'duel-match-list' }, matches.map((match) => matchCard(match)))],
         ] : [
           h('h2', null, 'Ваши встречи'), mine.length ? h('div', { class: 'duel-match-list' }, mine.filter((match) => !selected || selected.id !== match.id).map((match) => matchCard(match))) : h('div', { class: 'card' }, h('p', { class: 'soft' },
-            (data.table || []).length >= 2 ? 'У вас пока нет встреч в этой сетке. Участие и состав группы можно проверить в кабинете. Круговой этап проходит с понедельника по субботу; воскресенье отведено финалам.' : 'Для поединка нужны хотя бы два участника группы. Руководитель может отправить приглашение знакомым.')),
+            (data.table || []).length >= 2 ? 'У вас пока нет встреч в этой сетке. Участие и состав группы можно проверить в кабинете. Круговой этап проходит в субботу; воскресенье отведено финалам.' : 'Для поединка нужны хотя бы два участника группы. Руководитель может отправить приглашение знакомым.')),
           tableCard(data.table || data.league || []),
           h('details', { class: 'card duel-all' }, h('summary', null, `Все встречи · ${matches.length}`), h('div', { class: 'duel-match-list' }, matches.filter((match) => !inMatch(match)).map((match) => matchCard(match)))),
         ]];
@@ -186,6 +191,7 @@ window.TrainerDuels = (() => {
     }
     function matchCard(match, selected = false) {
       const self = own(match), demo = demonstration(match), done = finished(match) || demo;
+      const waitingOpen = !data || data.phase !== 'scheduled';
       const result = match.results || [];
       return h('article', { class: `card duel-match ${selected ? 'duel-selected' : ''}`, 'data-match': match.id },
         h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
@@ -202,8 +208,8 @@ window.TrainerDuels = (() => {
           h('p', { class: 'small soft' }, `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
           h('p', { class: 'soft' }, match.draw ? 'Ничья' : `Победитель: ${((match.players || []).find((player) => player.id === match.winner_id) || {}).name || '—'}`)) : null,
         !demo ? h('div', { class: 'row duel-actions' },
-          self && match.can_ready && !recording && !starting && !blob ? action('Готов · проверить микрофон', () => ready(match), false, true) : null,
-          self && self.ready && !match.own_session_id && armedId !== match.id && ['waiting','countdown','live'].includes(match.status) && !recording && !starting && !blob
+          self && match.can_ready && waitingOpen && !recording && !starting && !blob ? action('Готов · проверить микрофон', () => ready(match), false, true) : null,
+          self && self.ready && !match.own_session_id && armedId !== match.id && (['countdown','live'].includes(match.status) || waitingOpen && match.status === 'waiting') && !recording && !starting && !blob
             ? action('Включить микрофон и продолжить', () => ready(match), false, true) : null,
           self && match.can_cancel && !recording && !starting ? action('Отменить готовность', () => mutate(match, 'cancel')) : null,
           self && match.can_reset && !recording && !starting ? action((match.reset_requested_by || []).includes(self.id) ? 'Ждём согласия соперника' : 'Согласиться на повтор', () => mutate(match, 'reset'), (match.reset_requested_by || []).includes(self.id)) : null,
@@ -263,6 +269,7 @@ window.TrainerDuels = (() => {
     }
     async function ready(match) {
       if (demonstration(match) || pending || recording || starting || blob) return;
+      if (data && data.phase === 'scheduled' && match.status === 'waiting') return;
       pending = true; error = ''; draw();
       const profile = window.TrainerDrafts && TrainerDrafts.profile && TrainerDrafts.profile();
       try {

@@ -2,7 +2,7 @@
 'use strict';
 const ROOT_URL = new URL('./', self.registration.scope);
 const CACHE_PREFIX = 'speech-shell-' + encodeURIComponent(ROOT_URL.pathname) + '-';
-const CACHE_NAME = CACHE_PREFIX + '10bce88f01c83d06e4ac';
+const CACHE_NAME = CACHE_PREFIX + 'bede8f00248b85c0101f';
 const PRECACHE = ["./", "./app.js", "./connection-config.js", "./connection.css", "./connection.js", "./drafts.js", "./guide-audio/clarify-choices.m4a", "./guide-audio/clarify-feedback.m4a", "./guide-audio/clarify-first-answer.m4a", "./guide-audio/clarify-intro.m4a", "./guide-audio/clarify-revision.m4a", "./guide-audio/clarify-source.m4a", "./guide-audio/clarify-transfer.m4a", "./guide-audio/lexicon-choices.m4a", "./guide-audio/lexicon-feedback.m4a", "./guide-audio/lexicon-first-answer.m4a", "./guide-audio/lexicon-intro.m4a", "./guide-audio/lexicon-revision.m4a", "./guide-audio/lexicon-source.m4a", "./guide-audio/lexicon-transfer.m4a", "./guide-audio/manifest.json", "./guide-audio/synonyms-choices.m4a", "./guide-audio/synonyms-feedback.m4a", "./guide-audio/synonyms-first-answer.m4a", "./guide-audio/synonyms-intro.m4a", "./guide-audio/synonyms-revision.m4a", "./guide-audio/synonyms-source.m4a", "./guide-audio/synonyms-transfer.m4a", "./icons/apple-touch-icon.png", "./icons/icon-180.png", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/icon-maskable.svg", "./icons/icon.svg", "./learning-guide-content.js", "./learning-guide.js", "./manifest.webmanifest", "./mobile.css", "./mobile.js", "./style.css"];
 const SHELL_URL = ROOT_URL.href;
 const ASSETS = new Set(PRECACHE.filter(path => path !== './').map(path => new URL(path, ROOT_URL).href));

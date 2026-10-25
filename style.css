@@ -44,9 +44,9 @@
   --radius: 18px;
   --radius-sm: 12px;
   --font: system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --next-action-bg: #fff;
-  --next-action-ink: #161513;
-  --next-action-border: #d3cec2;
+  --next-action-bg: color-mix(in srgb, var(--surface) 38%, transparent);
+  --next-action-ink: var(--ink);
+  --next-action-border: color-mix(in srgb, var(--line-2) 65%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -486,9 +486,10 @@ p { margin: 0; }
   min-height: 56px; height: auto; max-width: 560px; width: 100%; padding: 14px 20px; gap: 16px;
   justify-content: space-between; white-space: normal; line-height: 1.4; text-align: left; pointer-events: auto;
   background: var(--next-action-bg); color: var(--next-action-ink); border: 1px solid var(--next-action-border);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, .18); border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .07); border-radius: 16px;
+  text-shadow: 0 0 4px var(--surface), 0 1px 2px var(--surface);
 }
-.btn.exercise-next-link:hover { background: var(--next-action-bg); color: var(--next-action-ink); box-shadow: 0 6px 28px rgba(0, 0, 0, .24); }
+.btn.exercise-next-link:hover { background: var(--next-action-bg); color: var(--next-action-ink); opacity: 1; box-shadow: 0 3px 12px rgba(0, 0, 0, .1); }
 .exercise-next-link > span { overflow-wrap: anywhere; }
 .exercise-next-link > svg { flex: none; }
 body.has-exercise-next #app { padding-bottom: calc(var(--trainer-mobile-nav-space, 0px) + var(--exercise-next-height, 80px) + 56px); }

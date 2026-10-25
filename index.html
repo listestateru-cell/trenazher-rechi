@@ -16,6 +16,8 @@
   <link rel="stylesheet" href="connection.css">
   <link rel="stylesheet" href="mobile.css">
   <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="groups.css">
+  <link rel="stylesheet" href="duels.css">
   <script>
     // Тема ставится до отрисовки, чтобы не мигало.
     try { const t = localStorage.getItem('tr.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -33,6 +35,7 @@
         <a href="#/program" data-nav="program">Программа</a>
         <a href="#/history" data-nav="history">История</a>
         <a href="#/progress" data-nav="progress">Прогресс</a>
+        <a href="#/groups" data-nav="groups">Группы</a>
       </nav>
       <a class="icon-btn admin-launch" id="admin-link" href="#/admin" aria-label="Пользователи — раздел администратора" title="Пользователи" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7.5" r="3"/><path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2M16 4.8a3 3 0 0 1 0 5.8M17 13a5 5 0 0 1 3.5 4.8V20"/></svg>
@@ -54,6 +57,8 @@
   <script src="learning-guide-content.js"></script>
   <script src="learning-guide.js"></script>
   <script src="admin.js"></script>
+  <script src="groups.js"></script>
+  <script src="duels.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

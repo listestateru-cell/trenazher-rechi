@@ -501,6 +501,8 @@ async function route() {
   try {
     let view;
     if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
+    else if (key === 'groups' && parts[2] === 'duels' && window.TrainerDuels) view = await TrainerDuels.view(ctx, parts, params);
+    else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);
@@ -543,9 +545,11 @@ function doneSessions(sessions) {
   return sessions.filter((s) => s.summary && (s.analysis || {}).status === 'done');
 }
 function programStatus(sessions, state) {
-  const today = todayStr();
+  const competition = state.competition;
+  const today = competition ? competition.today : todayStr();
   const start = state.program_start;
   const done = doneSessions(sessions).filter((s) => {
+    if (competition && s.group_id !== competition.id) return false;
     const count = Array.isArray(s.plan) ? s.plan.length : s.plan;
     return count > 0 && (s.takes || []).filter((t) => t.status === 'done').length >= count;
   });
@@ -556,7 +560,8 @@ function programStatus(sessions, state) {
   };
   const steps = catalog().program.map((p, i) => {
     const ses = done.find((x) => x.program_day === today && x.exercise === p.exercise);
-    return { ...p, i, done: !!ses, session: ses };
+    const shared = competition && (competition.tasks || []).find((task) => task.exercise === p.exercise);
+    return { ...p, i, done: shared ? shared.done : !!ses, session: ses, score: shared ? shared.score : null };
   });
   return {
     start,
@@ -609,6 +614,7 @@ async function HomeView(ctx) {
   const today = h('div', { class: 'card today-card' },
     h('div', { class: 'row' }, h('h2', null, 'Программа дня'), h('span', { class: 'spacer' }),
       ps.start ? h('span', { class: 'chip' }, ps.dayN > 30 ? 'программа пройдена' : `день ${ps.dayN} из 30`) : null),
+    state.competition ? h('p', { class: 'soft' }, h('a', { href: `#/groups/${state.competition.id}` }, state.competition.name), ' · задания общие для всей группы') : null,
     h('p', { class: 'soft' }, ps.start
       ? (ps.doneCount === 5 ? 'Все пять упражнений на сегодня сделаны. Завтра — следующий день.' : `Сделано ${ps.doneCount} из 5. Следующее — «${catalog().exercises[ps.next.exercise].title}».`)
       : '20 минут в день: спринт, минута без подготовки, сокращение мысли, объяснение и поединок. 30 дней подряд.'),
@@ -880,6 +886,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   app.state = state;
   if (sess) { v.session = sess; v.exId = sess.exercise; }
   if (sess && isLearningSession(sess)) return LearningSessionView(ctx, sess);
+  if (sess && sess.group_duel && window.TrainerDuels) return TrainerDuels.review(ctx, sess);
   if (sess) await restorePendingTake();
   v.ex = catalog().exercises[v.exId];
   if (!v.ex) throw new Error('Нет такого упражнения.');
@@ -892,9 +899,22 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       'У этой сохранённой попытки осталось прежнее задание. В новом спринте слова нужно соединить в одну историю.'],
   };
   v.programDay = v.session ? v.session.program_day : (params.get('program') ? todayStr() : null);
+  v.groupId = v.session ? v.session.group_id : ((v.programDay && state.competition) ? state.competition.id : null);
+  if (!v.session && params.get('group') && (!state.competition || params.get('group') !== state.competition.id)) {
+    throw new Error('Это задание доступно участникам группы. Откройте раздел «Группы» и проверьте участие.');
+  }
+  const sharedTask = !v.session && v.groupId && state.competition.tasks.find((task) => task.exercise === v.exId);
+  if (sharedTask) {
+    v.programDay = state.competition.today;
+    v.ex = { ...v.ex, takes: sharedTask.plan || v.ex.takes, prep: sharedTask.prep ?? v.ex.prep,
+      howto: sharedTask.howto || v.ex.howto, hint: sharedTask.hint || v.ex.hint };
+  }
+  if (v.session && v.groupId) v.ex = { ...v.ex, prep: v.session.group_prep ?? v.ex.prep,
+    howto: v.session.group_howto || v.ex.howto, hint: v.session.group_hint || v.ex.hint };
   v.topic = v.session ? v.session.topic : (v.exId === 'coach'
     ? ((state.coach_next && state.coach_next.question) || catalog().first_coach_question)
     : pickTopic(v.exId));
+  if (sharedTask) v.topic = sharedTask.topic;
   const isFree = v.exId === 'free';
   const plan = () => (v.session ? v.session.plan : v.ex.takes);
 
@@ -913,8 +933,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const busy = () => v.thoughtMicBusy || ['prep', 'rec', 'upload', 'asking', 'starting'].includes(v.stage);
 
   /* ---- шапка и тема ---- */
-  const backHref = v.programDay ? '#/program' : (sid ? '#/history' : '#/');
-  const backText = v.programDay ? 'Программа дня' : (sid ? 'История' : 'Все упражнения');
+  const backHref = v.groupId ? `#/groups/${v.groupId}` : (v.programDay ? '#/program' : (sid ? '#/history' : '#/'));
+  const backText = v.groupId ? 'К группе' : (v.programDay ? 'Программа дня' : (sid ? 'История' : 'Все упражнения'));
   const firstVisit = !prefs.get('seen.' + v.exId, false);
   prefs.set('seen.' + v.exId, true);
 
@@ -932,7 +952,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   function renderTopic() {
     topicTextEl.replaceChildren();
     topicTools.replaceChildren();
-    const locked = !!v.session;
+    const locked = !!v.session || !!v.groupId;
     if (isFree) {
       if (locked) topicTextEl.textContent = v.topic || 'Свободная речь';
       else {
@@ -952,6 +972,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       return;
     }
     topicTextEl.textContent = v.topic;
+    if (v.groupId) topicTools.append(h('span', { class: 'small soft' }, 'Общая тема группы. В зачёт идёт одно выполнение задания за день.'));
     if (!locked) {
       topicTools.append(
         h('button', { class: 'btn quiet small', type: 'button', onclick: () => { v.topic = pickTopic(v.exId, v.topic); renderTopic(); } }, icon('shuffle'), v.exId === 'coach' ? 'Другой вопрос' : 'Другая тема'),
@@ -1106,12 +1127,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
   }
 
-  const freshHref = () => `#/ex/${v.exId}${v.programDay ? '?program=1' : ''}`;
+  const freshHref = () => `#/ex/${v.exId}${v.programDay ? '?program=1' : ''}${v.groupId ? '&group=' + encodeURIComponent(v.groupId) : ''}`;
 
   async function ensureSession() {
     if (v.session) return true;
     try {
-      v.session = await api('/api/sessions', { method: 'POST', body: { exercise: v.exId, topic: v.topic, program_day: v.programDay } });
+      v.session = await api('/api/sessions', { method: 'POST', body: { exercise: v.exId, topic: v.topic, program_day: v.programDay, group_id: v.groupId } });
     } catch (e) {
       toast(e.message);
       return false;
@@ -1123,6 +1144,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       api('/api/state', { method: 'POST', body: { program_start: v.programDay } }).then((st) => { app.state = { ...app.state, ...st }; }).catch(() => {});
     }
     v.topic = v.session.topic;
+    v.groupId = v.session.group_id || null;
     renderTopic();
     renderExtras();
     return true;
@@ -1651,7 +1673,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
           const ps = programStatus(v.sessionsCache, app.state);
           if (tok !== v.afterTok || v.destroyed) return;
           if (ps.next) {
-            const href = `#/ex/${ps.next.exercise}?program=1`, label = `Дальше: ${catalog().exercises[ps.next.exercise].title}`;
+            const href = `#/ex/${ps.next.exercise}?program=1${v.groupId ? '&group=' + encodeURIComponent(v.groupId) : ''}`, label = `Дальше: ${catalog().exercises[ps.next.exercise].title}`;
             setNextAction(href, label);
           } else {
             setNextAction('#/program', 'Программа дня выполнена');
@@ -2384,7 +2406,7 @@ async function ProgramView(ctx) {
   const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
   app.state = state;
   const ps = programStatus(sessions, state);
-  const today = todayStr();
+  const today = state.competition ? state.competition.today : todayStr();
 
   const startBtn = h('button', { class: 'btn', type: 'button' }, 'Начать сегодня', icon('arrow'));
   startBtn.addEventListener('click', async () => {
@@ -2393,14 +2415,16 @@ async function ProgramView(ctx) {
 
   const head = h('div', { class: 'stack', style: 'margin-bottom:22px' },
     h('h1', null, 'Программа на 30 дней'),
+    state.competition ? h('div', { class: 'card' }, h('h2', null, state.competition.name), h('p', { class: 'soft' }, 'Сегодняшние темы одинаковые для всей группы. Выполненные задания идут в недельный зачёт.'), h('a', { class: 'btn ghost', href: `#/groups/${state.competition.id}` }, 'Рейтинг и задания группы', icon('arrow'))) : null,
     h('p', { class: 'soft', style: 'max-width:680px' }, '20 минут в день, пять упражнений по таблице. Выполняйте ежедневно месяц. Записи 1-го, 15-го и 30-го дня — контрольные: на странице «Прогресс» они сравниваются по темпу, паузам, повторам, паразитам и законченным мыслям.'));
 
   const stepRows = ps.steps.map((st) => {
     const ex = catalog().exercises[st.exercise];
-    return h('a', { class: 'step-row' + (st.done ? ' done' : ''), href: st.done ? `#/s/${st.session.id}` : `#/ex/${st.exercise}?program=1` },
+    const href = st.done ? (st.session ? `#/s/${st.session.id}` : `#/groups/${state.competition.id}`) : `#/ex/${st.exercise}?program=1`;
+    return h('a', { class: 'step-row' + (st.done ? ' done' : ''), href },
       h('span', { class: 'n' }, st.done ? '✓' : String(st.i + 1)),
       h('span', null, h('div', { class: 't' }, ex.title), h('div', { class: 'small muted' }, `${st.minutes} мин · ${st.develops}`)),
-      st.done ? h('span', { class: 'score-pill' }, f1(st.session.summary.overall), h('small', null, '/10')) : h('span', { class: 'muted' }, icon('arrow')));
+      st.done ? h('span', { class: 'score-pill' }, f1(st.score ?? (st.session && st.session.summary && st.session.summary.overall)), h('small', null, '/10')) : h('span', { class: 'muted' }, icon('arrow')));
   });
 
   const todayCard = h('div', { class: 'card' },
@@ -2787,6 +2811,8 @@ async function openSettings() {
     h('div', { class: 'row' }, h('h2', { id: 'settings-title' }, 'Настройки'), h('span', { class: 'spacer' }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Закрыть', onclick: () => dlg.close() }, '✕')),
     coachField,
+    h('div', { class: 'field' }, h('div', { class: 'label' }, 'Совместные тренировки'),
+      h('a', { class: 'btn ghost', href: '#/groups', onclick: () => dlg.close() }, 'Группы и приглашения')),
     state && state.is_owner === true ? h('div', { class: 'field' }, h('div', { class: 'label' }, 'Администрирование'),
       h('a', { class: 'btn ghost', href: '#/admin', onclick: () => dlg.close() }, 'Пользователи и их занятия')) : null,
     h('div', { class: 'field' }, h('label', null, 'Микрофон'), micSel,

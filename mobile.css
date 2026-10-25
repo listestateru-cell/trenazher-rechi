@@ -54,7 +54,7 @@
   .brand-mark { width: 28px; height: 28px; flex: none; }
   #settings-btn { width: 44px; height: 44px; }
   .topbar .nav {
-    position: fixed; inset: auto 0 0; width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    position: fixed; inset: auto 0 0; width: 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
     min-height: var(--trainer-mobile-nav-space); margin: 0; gap: 2px; overflow: visible;
     padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + var(--trainer-mobile-safe-bottom)) max(8px, env(safe-area-inset-left));
     border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -5px 20px rgba(22, 21, 19, .04); z-index: 30;

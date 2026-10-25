@@ -23,6 +23,11 @@
 .groups-card-tags:empty { display: none; }
 .groups-card-tags .chip { font-size: 12px; }
 .groups-list-hint { margin-top: -8px; max-width: 72ch; }
+.groups-demo-label { display: inline-flex; align-items: center; width: fit-content; margin-left: 6px; padding: 3px 7px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface-2); color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.4; vertical-align: middle; }
+.groups-card-tags .groups-demo-label { margin-left: 0; }
+.groups-demo-notice { display: flex; flex-direction: column; gap: 10px; border-left: 4px solid var(--accent); background: var(--surface-2); }
+.groups-demo-notice h2 { font-size: 20px; }
+.groups-demo-notice p { max-width: 78ch; line-height: 1.6; }
 .groups-context { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
 .groups-card-foot { display: flex; gap: 16px; align-items: center; padding-top: 14px; margin-top: auto; border-top: 1px solid var(--line); }
 .groups-card-foot > :first-child { margin-right: auto; }

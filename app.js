@@ -584,7 +584,7 @@ async function programForGroup(state, gid) {
   return { id: group.id, name: group.name, week: group.week, today: day.date, tasks: day.tasks };
 }
 function streak(sessions) {
-  const days = new Set(doneSessions(sessions).map((s) => (s.created || '').slice(0, 10)));
+  const days = new Set(doneSessions(sessions).filter((session) => !isDemoSession(session)).map((s) => (s.created || '').slice(0, 10)));
   let d = todayStr();
   if (!days.has(d)) d = addDays(d, -1);
   let n = 0;
@@ -620,7 +620,7 @@ async function HomeView(ctx) {
   app.state = state;
   const ps = programStatus(sessions, state);
   const lastByEx = {};
-  for (const x of doneSessions(sessions)) if (!lastByEx[x.exercise]) lastByEx[x.exercise] = x;
+  for (const x of doneSessions(sessions)) if (!isDemoSession(x) && !lastByEx[x.exercise]) lastByEx[x.exercise] = x;
 
   const today = h('div', { class: 'card today-card' },
     h('div', { class: 'row' }, h('h2', null, 'Программа дня'), h('span', { class: 'spacer' }),
@@ -677,6 +677,18 @@ async function HomeView(ctx) {
 }
 
 /* ===================== мысль и слово ===================== */
+function isDemoSession(sess) {
+  return !!sess && sess.demonstration === true;
+}
+
+function demoResultNotice(sess) {
+  if (!isDemoSession(sess)) return null;
+  return h('aside', { class: 'card callout', role: 'note', 'aria-label': 'Демонстрационный результат' },
+    h('h2', null, 'Демонстрационный результат'),
+    h('p', null, 'Оценки заданы для примера; аудиозаписи и анализа тренера не было.'),
+    h('p', { class: 'small soft' }, 'Темп, паузы и другие замеры не проводились.'));
+}
+
 function isLearningSession(sess) {
   return !!sess && LEARNING_KINDS.some((k) => k.id === (sess.learning_kind || sess.exercise)) && !(sess.takes || []).length && !(sess.plan || []).length;
 }
@@ -1115,6 +1127,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (v.stage === 'error') {
       stageSub.append(h('span', { style: 'color:var(--bad-ink)' }, v.stageError));
     }
+    if (isDemoSession(v.session)) {
+      stageTitle.textContent = 'Демонстрационное выполнение';
+      stageSub.textContent = 'Пример для проверки рейтинга. Аудиозаписей нет.';
+      stageActions.append(h('a', { class: 'btn ghost small', href: freshHref() }, 'Выполнить упражнение самому'));
+      return;
+    }
     if (idx == null) {
       center.append(h('div', null, h('div', { style: 'font-size:44px;line-height:1' }, '✓')));
       stageTitle.textContent = p.length > 1 ? 'Все попытки записаны' : 'Запись готова';
@@ -1161,6 +1179,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function startTake() {
+    if (isDemoSession(v.session)) return;
     if (v.pendingTake) { renderStage(); return; }
     if (busy() || v.destroyed) return;
     const idx = nextIndex();
@@ -1384,6 +1403,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   function rerecord(i) {
+    if (isDemoSession(v.session)) return;
     if (busy() || v.pendingTake) return;
     v.forceIndex = i;
     v.stage = 'between';
@@ -1394,6 +1414,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function analyzePartial() {
+    if (isDemoSession(v.session)) return;
     try {
       v.session = await api(`/api/sessions/${v.session.id}/analyze`, { method: 'POST', body: { partial: true } });
       v.anKey = '';
@@ -1403,6 +1424,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function reanalyze() {
+    if (isDemoSession(v.session)) return;
     try {
       v.session = await api(`/api/sessions/${v.session.id}/analyze`, { method: 'POST', body: { partial: !allUploaded() } });
       v.anKey = '';
@@ -1528,14 +1550,15 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   function resultCard(an) {
     const r = an.result;
     const meta = an.meta || {};
-    const coachLabel = meta.provider === 'codex' ? 'Codex · резерв' : (meta.model === 'opus' ? 'Opus' : 'Sonnet');
+    const demo = isDemoSession(v.session);
+    const coachLabel = demo ? 'Демонстрация' : (meta.provider === 'codex' ? 'Codex · резерв' : (meta.model === 'opus' ? 'Opus' : 'Sonnet'));
     const crit = [['logic', 'Логика'], ['vocabulary', 'Словарный запас'], ['thinking_speed', 'Скорость мышления'], ['persuasiveness', 'Убедительность'], ['structure', 'Структура речи']];
     const deltas = h('div', { class: 'deltas' });
     const card = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, 'Разбор тренера'),
+      h('div', { class: 'card-head' }, h('h2', null, demo ? 'Пример результата' : 'Разбор тренера'),
         h('span', { class: 'chip' }, coachLabel + (meta.seconds ? ` · ${f1(meta.seconds)} с` : '')),
         h('span', { class: 'spacer' }),
-        h('button', { class: 'btn ghost small', type: 'button', onclick: reanalyze, title: 'Попросить тренера разобрать ещё раз' }, icon('redo'), 'Разобрать заново')),
+        demo ? null : h('button', { class: 'btn ghost small', type: 'button', onclick: reanalyze, title: 'Попросить тренера разобрать ещё раз' }, icon('redo'), 'Разобрать заново')),
       an.refresh_error ? h('div', { class: 'warn-line' },
         h('p', { role: 'status' }, 'Обновить разбор не удалось. Показываем предыдущий сохранённый разбор.'),
         h('details', { class: 'howto' }, h('summary', null, 'Подробности'), h('p', { class: 'small soft' }, an.refresh_error))) : null,
@@ -1559,11 +1582,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   async function fillDeltas(box) {
+    if (isDemoSession(v.session)) return;
     try {
       if (!v.sessionsCache) v.sessionsCache = await api('/api/sessions');
     } catch (e) { return; }
     const mine = v.session;
-    const prev = doneSessions(v.sessionsCache).find((x) => x.exercise === mine.exercise && x.id < mine.id);
+    const prev = doneSessions(v.sessionsCache).find((x) => !isDemoSession(x) && x.exercise === mine.exercise && x.id < mine.id);
     const now = mine.summary;
     if (!prev || !now) return;
     const p = prev.summary;
@@ -1612,15 +1636,16 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   function buildTakeCard(t, i, rt) {
     const p = plan();
+    const demo = isDemoSession(v.session);
     const cleanup = [];
     const el = h('article', { class: 'card', id: `take-${i}` });
     const head = h('div', { class: 'take-head' },
-      h('h3', null, p.length > 1 ? `Попытка ${i + 1} · ${t.label}` : (isFree && t.source && t.source !== 'микрофон' ? `Запись · ${t.source}` : 'Ваша речь')));
-    if (t.status === 'done' && t.metrics) head.append(h('span', { class: 'chip num' }, `${f1(t.metrics.speech_time)} с речи`));
+      h('h3', null, demo ? `Пример ответа${p.length > 1 ? ` ${i + 1} · ${t.label}` : ''}` : (p.length > 1 ? `Попытка ${i + 1} · ${t.label}` : (isFree && t.source && t.source !== 'микрофон' ? `Запись · ${t.source}` : 'Ваша речь'))));
+    if (!demo && t.status === 'done' && t.metrics) head.append(h('span', { class: 'chip num' }, `${f1(t.metrics.speech_time)} с речи`));
     if (t.status === 'processing') head.append(h('span', { class: 'chip pulse' }, 'расшифровываю…'));
     if (t.status === 'error') head.append(h('span', { class: 'chip bad' }, 'ошибка'));
     head.append(h('span', { class: 'spacer' }));
-    if (t.status !== 'processing' && !(isFree && t.source && t.source !== 'микрофон')) {
+    if (!demo && t.status !== 'processing' && !(isFree && t.source && t.source !== 'микрофон')) {
       head.append(h('button', { class: 'btn ghost small', type: 'button', onclick: () => rerecord(i) }, icon('redo'), 'Перезаписать'));
     }
     el.append(head);
@@ -1634,7 +1659,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       return { el, destroy() {} };
     }
     for (const w of t.warnings || []) el.append(h('div', { class: 'warn-line' }, w));
-    if (t.metrics && t.metrics.cut_by_timer) el.append(h('div', { class: 'warn-line' }, 'У границы времени в записи слышна речь. По этому признаку нельзя определить, закончена ли мысль.'));
+    if (!demo && t.metrics && t.metrics.cut_by_timer) el.append(h('div', { class: 'warn-line' }, 'У границы времени в записи слышна речь. По этому признаку нельзя определить, закончена ли мысль.'));
 
     const words = t.words || [];
     let player = null;
@@ -1655,11 +1680,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       nowIdx = ans;
       if (nowIdx >= 0 && wordEls[nowIdx]) wordEls[nowIdx].classList.add('now');
     }
-    const tr = renderTranscript(t, rt, wordEls, (idx) => { if (player) player.seek(Math.max(0, words[idx].s - 0.2)); });
+    const tr = demo ? { el: h('p', { class: 'transcript' }, t.text || words.map((word) => word.t).join(' ')) }
+      : renderTranscript(t, rt, wordEls, (idx) => { if (player) player.seek(Math.max(0, words[idx].s - 0.2)); });
     el.append(tr.el);
     if (tr.legend) el.append(tr.legend);
-    el.append(tilesFor(t, rt));
-    if (rt) el.append(takeAnalysis(rt, t, wordEls, player, (issueIndex) => thoughts.start(i, issueIndex)));
+    if (demo) el.append(h('p', { class: 'small soft' }, 'Текст для примера. Аудиозаписи нет; замеры речи не проводились.'));
+    else el.append(tilesFor(t, rt));
+    if (rt) el.append(takeAnalysis(rt, t, wordEls, player, demo ? null : (issueIndex) => thoughts.start(i, issueIndex)));
     return { el, destroy() { cleanup.forEach((f) => f()); } };
   }
 
@@ -1673,6 +1700,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const tok = (v.afterTok = (v.afterTok || 0) + 1);
     if (!sess) { afterBox.replaceChildren(); return; }
     const btns = [];
+    if (isDemoSession(sess)) {
+      setNextAction(v.groupId ? `#/groups/${v.groupId}` : '#/history', v.groupId ? 'К рейтингу группы' : 'К истории');
+      afterBox.replaceChildren(h('a', { class: 'btn ghost', href: freshHref() }, 'Выполнить упражнение самому'));
+      return;
+    }
     if (done) {
       setNextAction(v.programDay ? (v.groupId ? `#/groups/${v.groupId}` : '#/program') : freshHref(), v.programDay ? 'К программе дня' : (v.exId === 'coach' ? 'Следующий вопрос' : isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
       if (v.exId === 'coach' && !v.programDay) setNextAction('#/ex/coach', 'Следующий вопрос');
@@ -1770,8 +1802,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     h('ol', null, v.ex.howto.map((x) => h('li', null, x))));
   const head = h('div', null,
     h('a', { class: 'back', href: backHref }, icon('back'), backText),
-    h('div', { class: 'ex-head' }, h('h1', null, v.ex.title), h('span', { class: 'chip' }, v.ex.develops),
+    h('div', { class: 'ex-head' }, h('h1', null, isDemoSession(v.session) ? `Демо · ${v.ex.title}` : v.ex.title), h('span', { class: 'chip' }, v.ex.develops),
       v.programDay ? h('span', { class: 'chip dark' }, 'Программа дня') : null),
+    demoResultNotice(v.session),
     howto);
 
   if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
@@ -1832,7 +1865,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
   function renderEntry() {
     const sess = session();
     const ready = sess && (sess.takes || []).map((t, i) => ({ t, i })).filter(({ t }) => t.status === 'done' && (t.text || (t.words || []).length));
-    const available = !!(ready && ready.length && sess.analysis && sess.analysis.status === 'done');
+    const available = !!(ready && ready.length && sess.analysis && sess.analysis.status === 'done' && !isDemoSession(sess));
     const key = JSON.stringify([available, ready && ready.map(({ i, t }) => [i, t.label]), creating, createError]);
     if (key === entryKey) return;
     entryKey = key;
@@ -2549,7 +2582,9 @@ async function HistoryView(ctx, params) {
       const st = (x.analysis || {}).status;
       const recorded = (x.takes || []).filter((t) => t.status === 'done').length;
       const stats = h('span', { class: 'stats' });
-      if (sm) {
+      if (isDemoSession(x)) {
+        stats.append(h('span', { class: 'chip' }, 'Демонстрация'), sm ? h('span', { class: 'score-pill' }, f1(sm.overall), h('small', null, '/10')) : null);
+      } else if (sm) {
         stats.append(h('span', { class: 'chip num' }, `${f1(sm.fillers_per_min)} паразит./мин`), sm.wpm ? h('span', { class: 'chip num' }, `${sm.wpm} сл/мин`) : '',
           h('span', { class: 'score-pill' }, f1(sm.overall), h('small', null, '/10')));
       } else if (x.learning_kind || st === 'practice') {
@@ -2654,9 +2689,13 @@ function lineChart(points, { format = f1, title, sub }) {
 async function ProgressView(ctx) {
   const [sessions, state] = await Promise.all([api('/api/sessions'), api('/api/state')]);
   app.state = state;
-  const done = doneSessions(sessions).slice().reverse();
+  const realSessions = sessions.filter((session) => !isDemoSession(session));
+  const demoNotice = realSessions.length < sessions.length ? h('p', { class: 'small soft' },
+    'Демонстрационные прохождения не учитываются в личном прогрессе. Их результаты доступны в рейтингах групп.') : null;
+  const done = doneSessions(realSessions).slice().reverse();
   if (!done.length) {
     render(ctx, h('h1', { style: 'margin-bottom:18px' }, 'Прогресс'),
+      demoNotice,
       h('div', { class: 'card empty' }, h('h3', null, 'Пока нечего сравнивать'), h('p', null, 'После первых разборов здесь появятся графики: паразиты, заминки, темп и оценки.'),
         h('p', { style: 'margin-top:14px' }, h('a', { class: 'btn', href: '#/' }, 'К упражнениям'))));
     return null;
@@ -2666,7 +2705,7 @@ async function ProgressView(ctx) {
   const avgFirst = avg(first.map((x) => x.summary.overall)), avgRecent = avg(recent.map((x) => x.summary.overall));
   const minutes = done.reduce((a, x) => a + (x.summary.speech_time || 0), 0) / 60;
   const days = new Set(done.map((x) => x.created.slice(0, 10))).size;
-  const st = streak(sessions);
+  const st = streak(realSessions);
   const delta = done.length >= 6 ? avgRecent - avgFirst : null;
 
   const kpi = (label, val, sub, subCls) => h('div', { class: 'kpi' }, h('div', { class: 'k-label' }, label), h('div', { class: 'k-val' }, val), sub ? h('div', { class: 'k-sub', style: subCls || '' }, sub) : null);
@@ -2762,6 +2801,7 @@ async function ProgressView(ctx) {
 
   render(ctx,
     h('div', { class: 'ex-head' }, h('h1', null, 'Прогресс')),
+    demoNotice,
     kpis,
     h('div', { class: 'section-title' }, h('h2', null, 'Динамика'), h('span', { class: 'muted' }, 'каждая точка — тренировка с разбором'), h('span', { class: 'spacer' }), tableBtn),
     h('div', { class: 'charts' }, charts),

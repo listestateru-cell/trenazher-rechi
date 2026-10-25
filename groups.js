@@ -239,9 +239,9 @@ window.TrainerGroups = (() => {
           if (Number.isFinite(gap) && gap >= 0) selfLabel += ` · До лидера: ${rating(gap)} ${Number.isInteger(gap) ? plural(gap, 'балл', 'балла', 'баллов') : 'балла'}`;
         }
       } else if (!self && group.joined === false) selfLabel = 'Вы не участвуете';
-      return h('section', { class: 'groups-card-preview', 'aria-label': `Рейтинг недели: ${group.name}` },
+      return h('div', { class: 'groups-card-preview' },
         h('div', { class: 'groups-card-preview-heading' }, h('span', null, 'Рейтинг недели'), h('span', { class: 'small soft' }, 'из 100')),
-        preview.has_results && top.length ? h('ol', { class: 'groups-card-standings', 'aria-label': 'Три лучших участника по рейтингу' }, top.map((person) => h('li', null,
+        preview.has_results && top.length ? h('ol', { class: 'groups-card-standings' }, top.map((person) => h('li', null,
           h('span', { class: 'groups-card-place num', 'aria-label': `Место: ${person.rank || '—'}` }, person.rank || '—'),
           avatar(person, 'groups-card-avatar'),
           h('span', { class: 'groups-card-person' }, h('span', null, nameOf(person), person.is_self ? h('span', { class: 'groups-card-person-self' }, ' · вы') : null),

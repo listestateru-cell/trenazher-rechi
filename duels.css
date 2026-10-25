@@ -24,6 +24,34 @@
 .duel-text { white-space: pre-wrap; }
 .duel-podium { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
 .duel-podium li { display: flex; flex-wrap: wrap; gap: 12px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.duel-podium-final { grid-template-columns: repeat(4,minmax(0,1fr)); }
+.duel-podium-final li { min-width: 0; flex-direction: column; gap: 8px; border: 1px solid var(--line); }
+.duel-podium-final li:first-child { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.duel-podium-final strong { font-size: 19px; line-height: 1.4; overflow-wrap: anywhere; }
+.duel-place { font-size: 14px; color: var(--ink-2); }
+.duel-podium-final li:first-child .duel-place { color: var(--accent-ink); font-weight: 650; }
+.duel-bracket-rounds { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 32px; }
+.duel-bracket-round { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.duel-bracket-round > h3 { font-size: 18px; }
+.duel-bracket-match { min-width: 0; border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 16px; background: var(--surface-2); display: flex; flex-direction: column; gap: 12px; }
+.duel-bracket-match[data-stage="final"] { border-color: var(--accent); }
+.duel-bracket-match-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.duel-bracket-match-head h4 { font-size: 15px; line-height: 1.5; }
+.duel-bracket-match-head .groups-demo-label { margin-left: 0; }
+.duel-bracket-players { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.duel-bracket-players li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px; border-radius: 8px; }
+.duel-bracket-winner { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.duel-bracket-person { min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.duel-bracket-count { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.duel-bracket-count > strong { font-size: 25px; line-height: 1.2; }
+.duel-bracket-count > .small { font-size: 12px; }
+.duel-bracket-outcome { padding-top: 10px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.duel-bracket-flow { line-height: 1.7; }
+.duel-qualification { padding-top: 4px; border-top: 1px solid var(--line); }
+.duel-seeds { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+.duel-seeds li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.duel-seeds li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.duel-seeds li > .num { flex: none; }
 .duels-view .row { flex-wrap: wrap; }
 @media(max-width:767px) {
   .duel-match-list { grid-template-columns: minmax(0,1fr); }
@@ -34,4 +62,10 @@
   .duel-ranking .duel-rank-col { width: 39px; }
   .duel-ranking .duel-record-col { width: 62px; }
   .duel-ranking .duel-points-col { width: 40px; }
+  .duel-week-result, .duel-bracket { padding: 18px 16px; }
+  .duel-podium-final { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+  .duel-podium-final li { padding: 12px; }
+  .duel-podium-final strong { font-size: 17px; }
+  .duel-bracket-rounds { grid-template-columns: minmax(0,1fr); gap: 24px; }
+  .duel-bracket-match { padding: 12px; }
 }

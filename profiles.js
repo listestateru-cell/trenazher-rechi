@@ -1,7 +1,7 @@
 'use strict';
 /* Фото приходит с авторизованного API, герои — из локального набора. */
 window.TrainerProfiles = (() => {
-  const characterIds = new Set(['sonic', 'mario', 'crash', 'chip', 'dale', 'gadget', 'darkwing', 'scrooge',
+  const characterIds = new Set(['sonic', 'mario', 'crash', 'chip', 'dale', 'gadget', 'zipper', 'monterey-jack', 'darkwing', 'scrooge', 'huey',
     'leonardo', 'donatello', 'shrek', 'fiona', 'tom', 'jerry', 'bugs', 'lola', 'spongebob', 'kim', 'sailor-moon']);
 
   function avatar(person, extraClass = '') {

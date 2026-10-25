@@ -4,3 +4,78 @@
 .profile-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .profile-identity > div { min-width: 0; overflow-wrap: anywhere; }
 .profile-test-label { display: inline-block; font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 6px; }
+
+.profile-launch { display: inline-grid; place-items: center; flex: none; width: 44px; min-width: 44px; height: 44px; border: 1px solid var(--line-2); border-radius: 50%; color: var(--ink); }
+.profile-launch:hover { background: var(--surface-2); text-decoration: none; }
+.profile-launch[aria-current="page"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-invitation { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.profile-invitation > div { flex: 1; }
+.profile-invitation h2 { font-size: 18px; margin-bottom: 4px; }
+.profile-invitation p { font-size: 15px; }
+.profile-invitation .btn { flex: none; min-height: 44px; }
+.profile-page { max-width: 800px; margin: 0 auto; }
+.profile-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-bottom: 16px; }
+.profile-back svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.profile-welcome { display: table; margin-bottom: 12px; }
+.profile-intro { margin: 12px 0 24px; max-width: 580px; }
+.profile-preview { display: flex; align-items: center; gap: 24px; margin-bottom: 28px; }
+.profile-preview-image { display: flex; flex: none; }
+.profile-avatar.profile-large { width: 104px; height: 104px; font-size: 42px; }
+.profile-preview-copy { min-width: 0; overflow-wrap: anywhere; }
+.profile-preview-copy h2 { font-size: 24px; line-height: 1.25; margin-bottom: 4px; }
+.profile-preview-eyebrow { color: var(--ink-2); font-size: 13px; margin-bottom: 8px; }
+.profile-preview-label { color: var(--accent-ink); margin-top: 10px; font-weight: 600; }
+.profile-options { min-width: 0; padding: 0; margin: 0; border: 0; }
+.profile-options legend { padding: 0; margin-bottom: 14px; font-size: 21px; font-weight: 650; line-height: 1.25; }
+.profile-choice { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; min-height: 158px; padding: 16px 8px 10px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--surface); cursor: pointer; text-align: center; transition: background .18s, border-color .18s, box-shadow .18s; touch-action: manipulation; }
+.profile-choice:hover { background: var(--surface-2); }
+.profile-choice:active { background: var(--surface-3); }
+.profile-choice.is-selected { border-color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent-ink); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.profile-choice:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
+.profile-choice input { position: absolute; top: 10px; left: 10px; margin: 0; width: 16px; height: 16px; min-height: 0; accent-color: var(--accent-ink); cursor: pointer; }
+.profile-choice input:focus-visible { outline: 0; }
+.profile-avatar.profile-choice-avatar { width: 72px; height: 72px; font-size: 30px; }
+.profile-choice-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.profile-choice-name { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.profile-choice-hint { color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.profile-choice-marker { min-height: 18px; color: var(--accent-ink); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.profile-choice-telegram { flex-direction: row; justify-content: flex-start; gap: 16px; min-height: 104px; padding: 16px 18px 16px 40px; text-align: left; }
+.profile-choice-telegram .profile-choice-copy { flex: 1; }
+.profile-choice-telegram .profile-choice-name { font-size: 16px; }
+.profile-choice-telegram input { left: 14px; top: calc(50% - 8px); }
+.profile-choice-telegram .profile-avatar { width: 60px; height: 60px; font-size: 26px; }
+.profile-gallery-note { margin: 24px 0 14px; font-size: 15px; }
+.profile-character-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.profile-save-row { position: sticky; bottom: calc(12px + var(--trainer-mobile-nav-space, 0px)); z-index: 5; display: flex; align-items: center; gap: 18px; margin-top: 24px; padding: 12px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--surface); box-shadow: 0 6px 24px rgb(0 0 0 / 12%); }
+.profile-choice { scroll-margin-block: 100px; }
+.profile-save { min-height: 48px; min-width: 160px; flex: none; }
+.profile-save-status { color: var(--ink-2); font-size: 15px; overflow-wrap: anywhere; }
+.profile-save-status.is-error { color: var(--bad-ink); }
+.profile-save-status:empty { display: none; }
+.profile-footnote { margin-top: 22px; font-size: 14px; }
+.profile-form:has(.profile-save:disabled) .profile-choice input:disabled { cursor: wait; }
+@media (max-width: 767px) {
+  .profile-invitation { flex-wrap: wrap; gap: 12px; }
+  .profile-invitation > div { min-width: 200px; }
+  .profile-invitation .btn { margin-left: 56px; }
+  .profile-preview { gap: 16px; padding: 20px 16px; }
+  .profile-avatar.profile-large { width: 88px; height: 88px; font-size: 36px; }
+  .profile-preview-copy h2 { font-size: 21px; }
+  .profile-character-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .profile-choice { padding: 16px 6px 10px; }
+  .profile-choice-name { font-size: 14px; }
+  .profile-choice-telegram { padding: 16px 12px 16px 38px; gap: 12px; flex-wrap: wrap; }
+  .profile-choice-telegram .profile-choice-copy { min-width: 155px; }
+  .profile-choice-telegram .profile-choice-marker { flex-basis: 100%; margin-left: 72px; }
+  .profile-save-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .profile-save { width: 100%; }
+}
+@media (max-width: 359px) {
+  .profile-character-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-invitation .btn { margin-left: 0; width: 100%; }
+  .profile-preview { gap: 12px; }
+  .profile-avatar.profile-large { width: 72px; height: 72px; font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-choice { transition: none; }
+}

@@ -487,6 +487,7 @@ async function route() {
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(qs || '');
   const key = parts[0] || 'home';
+  if (window.TrainerProfiles) TrainerProfiles.refreshHeader();
   const adminEntry = $('#admin-link');
   if (adminEntry) {
     adminEntry.classList.toggle('active', key === 'admin');
@@ -500,7 +501,8 @@ async function route() {
   const ctx = { alive: () => token === routeToken, root };
   try {
     let view;
-    if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
+    if (key === 'profile' && window.TrainerProfiles) view = await TrainerProfiles.view(ctx, parts, params);
+    else if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
     else if (key === 'groups' && parts[2] === 'duels' && window.TrainerDuels) view = await TrainerDuels.view(ctx, parts, params);
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
@@ -618,6 +620,7 @@ function rememberTopic(exId, topic) {
 async function HomeView(ctx) {
   const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
   app.state = state;
+  if (window.TrainerProfiles) TrainerProfiles.refreshHeader(state);
   const ps = programStatus(sessions, state);
   const lastByEx = {};
   for (const x of doneSessions(sessions)) if (!isDemoSession(x) && !lastByEx[x.exercise]) lastByEx[x.exercise] = x;
@@ -662,6 +665,7 @@ async function HomeView(ctx) {
         h('p', null, 'Отвечаете голосом — тренер слышит каждое «ну», «вот» и «э-э», меряет паузы по звуку, находит неточности и показывает, как сказать сильнее.'),
         h('div', { class: 'skills' }, ['Логика', 'Словарный запас', 'Скорость мышления', 'Убедительность', 'Структура речи'].map((x) => h('span', { class: 'chip' }, x)))),
       today),
+    window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
     coach,
     h('div', { class: 'section-title' }, h('h2', null, 'Мысль и слово'), h('a', { href: '#/learn' }, 'Все задания', icon('arrow'))),
     h('p', { class: 'soft learning-intro' }, 'Короткие задания на ясность мысли и точность слов. Можно отвечать текстом или голосом.'),
@@ -2885,6 +2889,8 @@ async function openSettings() {
   dlg.replaceChildren(h('div', { class: 'dialog-in' },
     h('div', { class: 'row' }, h('h2', { id: 'settings-title' }, 'Настройки'), h('span', { class: 'spacer' }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Закрыть', onclick: () => dlg.close() }, '✕')),
+    h('div', { class: 'field' }, h('div', { class: 'label' }, 'Мой профиль'),
+      h('a', { class: 'btn ghost', href: '#/profile', onclick: () => dlg.close() }, 'Фото Telegram или герой')),
     coachField,
     h('div', { class: 'field' }, h('div', { class: 'label' }, 'Совместные тренировки'),
       h('a', { class: 'btn ghost', href: '#/groups', onclick: () => dlg.close() }, 'Группы и приглашения')),
@@ -2919,6 +2925,7 @@ async function boot() {
   $('#settings-btn').addEventListener('click', openSettings);
   try {
     [app.catalog, app.state] = await Promise.all([api('/api/catalog'), api('/api/state')]);
+    if (window.TrainerProfiles) TrainerProfiles.refreshHeader();
     const adminEntry = $('#admin-link');
     if (adminEntry) adminEntry.hidden = app.state.is_owner !== true;
   } catch (e) {

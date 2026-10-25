@@ -549,7 +549,7 @@ function programStatus(sessions, state) {
   const today = competition ? competition.today : todayStr();
   const start = state.program_start;
   const done = doneSessions(sessions).filter((s) => {
-    if (competition && s.group_id !== competition.id) return false;
+    if (competition ? s.group_id !== competition.id : !!s.group_id) return false;
     const count = Array.isArray(s.plan) ? s.plan.length : s.plan;
     return count > 0 && (s.takes || []).filter((t) => t.status === 'done').length >= count;
   });
@@ -571,6 +571,17 @@ function programStatus(sessions, state) {
     next: steps.find((x) => !x.done) || null,
     stepsOn,
   };
+}
+function programHref(exercise, competition) {
+  return `#/ex/${exercise}?program=1${competition ? '&group=' + encodeURIComponent(competition.id) : ''}`;
+}
+async function programForGroup(state, gid) {
+  if (!gid || (state.competition && state.competition.id === gid)) return state.competition;
+  const group = await api(`/api/groups/${encodeURIComponent(gid)}`);
+  if (!group.joined) throw new Error('Для выполнения задания нужно вступить в эту группу.');
+  const day = group.daily.find((row) => row.today);
+  if (!day) throw new Error('Задания этой группы пока недоступны.');
+  return { id: group.id, name: group.name, week: group.week, today: day.date, tasks: day.tasks };
 }
 function streak(sessions) {
   const days = new Set(doneSessions(sessions).map((s) => (s.created || '').slice(0, 10)));
@@ -621,7 +632,7 @@ async function HomeView(ctx) {
     h('div', { class: 'steps', 'aria-hidden': 'true' }, ps.steps.map((x) => h('span', { class: x.done ? 'done' : '' }))),
     h('div', { class: 'row' },
       ps.next
-        ? h('a', { class: 'btn', href: `#/ex/${ps.next.exercise}?program=1` }, ps.start ? 'Продолжить' : 'Начать программу', icon('arrow'))
+        ? h('a', { class: 'btn', href: programHref(ps.next.exercise, state.competition) }, ps.start ? 'Продолжить' : 'Начать программу', icon('arrow'))
         : h('a', { class: 'btn ghost', href: '#/progress' }, 'Посмотреть прогресс'),
       h('a', { class: 'btn ghost', href: '#/program' }, 'Вся программа')));
 
@@ -899,13 +910,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       'У этой сохранённой попытки осталось прежнее задание. В новом спринте слова нужно соединить в одну историю.'],
   };
   v.programDay = v.session ? v.session.program_day : (params.get('program') ? todayStr() : null);
-  v.groupId = v.session ? v.session.group_id : ((v.programDay && state.competition) ? state.competition.id : null);
-  if (!v.session && params.get('group') && (!state.competition || params.get('group') !== state.competition.id)) {
-    throw new Error('Это задание доступно участникам группы. Откройте раздел «Группы» и проверьте участие.');
-  }
-  const sharedTask = !v.session && v.groupId && state.competition.tasks.find((task) => task.exercise === v.exId);
+  const exerciseProgram = !v.session && (v.programDay || params.get('group'))
+    ? await programForGroup(state, params.get('group')) : null;
+  v.groupId = v.session ? v.session.group_id : (exerciseProgram ? exerciseProgram.id : null);
+  const sharedTask = !v.session && exerciseProgram && exerciseProgram.tasks.find((task) => task.exercise === v.exId);
   if (sharedTask) {
-    v.programDay = state.competition.today;
+    v.programDay = exerciseProgram.today;
     v.ex = { ...v.ex, takes: sharedTask.plan || v.ex.takes, prep: sharedTask.prep ?? v.ex.prep,
       howto: sharedTask.howto || v.ex.howto, hint: sharedTask.hint || v.ex.hint };
   }
@@ -1664,19 +1674,21 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (!sess) { afterBox.replaceChildren(); return; }
     const btns = [];
     if (done) {
-      setNextAction(v.programDay ? '#/program' : freshHref(), v.programDay ? 'К программе дня' : (v.exId === 'coach' ? 'Следующий вопрос' : isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
+      setNextAction(v.programDay ? (v.groupId ? `#/groups/${v.groupId}` : '#/program') : freshHref(), v.programDay ? 'К программе дня' : (v.exId === 'coach' ? 'Следующий вопрос' : isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
       if (v.exId === 'coach' && !v.programDay) setNextAction('#/ex/coach', 'Следующий вопрос');
       if (v.programDay) {
-        btns.push(h('a', { class: 'btn ghost', href: freshHref() }, icon('shuffle'), 'Ещё раз с новой темой'));
+        btns.push(h('a', { class: 'btn ghost', href: freshHref() }, icon('shuffle'), v.groupId ? 'Повторить задание' : 'Ещё раз с новой темой'));
         try {
           v.sessionsCache = await api('/api/sessions');
-          const ps = programStatus(v.sessionsCache, app.state);
+          const latestState = v.groupId ? await api('/api/state') : app.state;
+          const competition = v.groupId ? await programForGroup(latestState, v.groupId) : null;
+          const ps = programStatus(v.sessionsCache, { ...latestState, competition });
           if (tok !== v.afterTok || v.destroyed) return;
           if (ps.next) {
             const href = `#/ex/${ps.next.exercise}?program=1${v.groupId ? '&group=' + encodeURIComponent(v.groupId) : ''}`, label = `Дальше: ${catalog().exercises[ps.next.exercise].title}`;
             setNextAction(href, label);
           } else {
-            setNextAction('#/program', 'Программа дня выполнена');
+            setNextAction(v.groupId ? `#/groups/${v.groupId}` : '#/program', 'Программа дня выполнена');
           }
         } catch (e) { /* без кнопки программы */ }
       }
@@ -2413,14 +2425,37 @@ async function ProgramView(ctx) {
     try { await api('/api/state', { method: 'POST', body: { program_start: today } }); route(); } catch (e) { toast(e.message); }
   });
 
+  const joinedGroups = state.competitions || [];
+  let groupPicker = null;
+  if (joinedGroups.length > 1) {
+    const select = h('select', { id: 'program-group-select', class: 'groups-select' },
+      joinedGroups.map((group) => h('option', { value: group.id }, group.name)));
+    select.value = state.competition ? state.competition.id : '';
+    const status = h('p', { class: 'small soft', role: 'status', 'aria-live': 'polite' },
+      'У каждой группы свои задания и зачёт. Выберите, где занимаетесь сейчас.');
+    select.addEventListener('change', async () => {
+      select.disabled = true;
+      status.textContent = 'Загружаем задания группы…';
+      try {
+        await api(`/api/groups/${encodeURIComponent(select.value)}/select`, { method: 'POST', body: {} });
+        if (ctx.alive()) route();
+      } catch (e) {
+        select.disabled = false;
+        select.value = state.competition ? state.competition.id : '';
+        status.textContent = e.message;
+      }
+    });
+    groupPicker = h('div', { class: 'card stack' }, h('label', { for: 'program-group-select' }, 'Задания какой группы?'), select, status);
+  }
   const head = h('div', { class: 'stack', style: 'margin-bottom:22px' },
     h('h1', null, 'Программа на 30 дней'),
-    state.competition ? h('div', { class: 'card' }, h('h2', null, state.competition.name), h('p', { class: 'soft' }, 'Сегодняшние темы одинаковые для всей группы. Выполненные задания идут в недельный зачёт.'), h('a', { class: 'btn ghost', href: `#/groups/${state.competition.id}` }, 'Рейтинг и задания группы', icon('arrow'))) : null,
+    groupPicker,
+    state.competition ? h('div', { class: 'card' }, h('h2', null, state.competition.name), h('p', { class: 'soft' }, 'Сегодняшние темы одинаковые внутри этой группы. Задания засчитываются только здесь.'), h('a', { class: 'btn ghost', href: `#/groups/${state.competition.id}` }, 'Рейтинг и задания группы', icon('arrow'))) : null,
     h('p', { class: 'soft', style: 'max-width:680px' }, '20 минут в день, пять упражнений по таблице. Выполняйте ежедневно месяц. Записи 1-го, 15-го и 30-го дня — контрольные: на странице «Прогресс» они сравниваются по темпу, паузам, повторам, паразитам и законченным мыслям.'));
 
   const stepRows = ps.steps.map((st) => {
     const ex = catalog().exercises[st.exercise];
-    const href = st.done ? (st.session ? `#/s/${st.session.id}` : `#/groups/${state.competition.id}`) : `#/ex/${st.exercise}?program=1`;
+    const href = st.done ? (st.session ? `#/s/${st.session.id}` : `#/groups/${state.competition.id}`) : programHref(st.exercise, state.competition);
     return h('a', { class: 'step-row' + (st.done ? ' done' : ''), href },
       h('span', { class: 'n' }, st.done ? '✓' : String(st.i + 1)),
       h('span', null, h('div', { class: 't' }, ex.title), h('div', { class: 'small muted' }, `${st.minutes} мин · ${st.develops}`)),
@@ -2432,7 +2467,7 @@ async function ProgramView(ctx) {
       h('span', { class: 'spacer' }), h('span', { class: 'chip' }, `${ps.doneCount} из 5`)),
     h('div', { class: 'steps-list' }, stepRows),
     h('div', { class: 'row', style: 'margin-top:14px' },
-      ps.start ? (ps.next ? h('a', { class: 'btn', href: `#/ex/${ps.next.exercise}?program=1` }, 'Следующий шаг', icon('arrow')) : h('span', { class: 'chip good' }, 'На сегодня всё сделано')) : startBtn));
+      ps.start ? (ps.next ? h('a', { class: 'btn', href: programHref(ps.next.exercise, state.competition) }, 'Следующий шаг', icon('arrow')) : h('span', { class: 'chip good' }, 'На сегодня всё сделано')) : startBtn));
 
   let calCard;
   if (ps.start) {

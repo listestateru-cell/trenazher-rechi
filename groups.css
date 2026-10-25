@@ -19,6 +19,11 @@
 .groups-group-card:active { background: var(--surface-3); }
 .groups-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .groups-card-top h3 { font-size: 21px; line-height: 1.3; }
+.groups-card-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.groups-card-tags:empty { display: none; }
+.groups-card-tags .chip { font-size: 12px; }
+.groups-list-hint { margin-top: -8px; max-width: 72ch; }
+.groups-context { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
 .groups-card-foot { display: flex; gap: 16px; align-items: center; padding-top: 14px; margin-top: auto; border-top: 1px solid var(--line); }
 .groups-card-foot > :first-child { margin-right: auto; }
 .groups-points { font-weight: 650; }
@@ -26,9 +31,11 @@
 .groups-empty p { max-width: 66ch; }
 .groups-create, .groups-friends, .groups-invite-card, .groups-join-card, .groups-consent { display: flex; flex-direction: column; gap: 16px; }
 .groups-create { max-width: 720px; }
+.groups-profile-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.groups-profile-note { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; }
 .groups-field { display: flex; flex-direction: column; gap: 8px; }
 .groups-field label { font-weight: 600; }
-.groups-input { display: block; width: 100%; min-width: 0; min-height: 48px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); font-size: 16px; }
+.groups-input, .groups-select { display: block; width: 100%; min-width: 0; min-height: 48px; padding: 10px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font-size: 16px; }
 .groups-input::placeholder { color: var(--ink-2); opacity: .8; }
 .groups-link-input { text-overflow: ellipsis; }
 .groups-copy { display: flex; flex-direction: column; gap: 8px; }
@@ -38,6 +45,12 @@
 .groups-copy [role="status"]:empty { display: none; }
 .groups-friend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .groups-friend-list li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); min-width: 0; }
+.groups-circle-link, .groups-circle-people { border-top: 1px solid var(--line); padding-top: 4px; }
+.groups-circle-link .groups-copy { margin: 8px 0; }
+.groups-circle-toggle, .groups-program { align-self: flex-start; }
+.groups-invitation-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; }
+.groups-invitation-list > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.groups-invitation-copy { gap: 6px; min-width: 0; }
 .groups-person-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--surface-3); color: var(--ink); font-weight: 650; }
 .groups-person-name { flex: 1; min-width: 0; }
 .groups-error { padding: 14px 16px; border-radius: var(--radius-sm); background: var(--chip-long-bg); color: var(--chip-long-ink); }
@@ -143,6 +156,8 @@
   .groups-friend-list li > .small { flex-basis: 100%; margin-left: 52px; margin-top: -6px; }
   .groups-join-card h2 { font-size: 24px; }
   .groups-day > summary { gap: 8px; }
+  .groups-profile-fields { grid-template-columns: minmax(0, 1fr); }
+  .groups-invitation-list > li { align-items: flex-start; flex-direction: column; }
 }
 .groups-tests, .groups-people { display: flex; flex-direction: column; gap: 14px; }
 .groups-test-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }

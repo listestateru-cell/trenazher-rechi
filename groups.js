@@ -14,7 +14,7 @@ window.TrainerGroups = (() => {
     const parsed = new Date(`${day}T12:00:00`);
     return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(weekday ? { weekday: 'long' } : {}) });
   };
-  const joinNotice = 'Участники группы увидят ваше имя, число выполненных заданий, дни занятий, место в рейтинге, оценки тренера и общие результаты поединков. Аудио, расшифровки и подробные разборы доступны вам и владельцу тренажёра.';
+  const joinNotice = 'В группе видны имя, баллы, дни занятий и средняя оценка. Записи, тексты и разборы доступны вам; другие участники и руководитель их не видят.';
   const categories = [{ id: 'general', label: 'Разные темы' }, { id: 'work', label: 'Коллеги' }, { id: 'friends', label: 'Друзья' }, { id: 'family', label: 'Семья' }];
   const ageBands = [{ id: 'adults', label: 'Взрослые и подростки 14+' }, { id: 'under14', label: 'С детьми до 14 лет' }];
   const profileLabel = (group) => [group.category_label || categories.find((item) => item.id === group.category)?.label, group.age_label || (group.age_band === 'under14' ? 'С детьми до 14 лет' : '')].filter(Boolean).join(' · ');

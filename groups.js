@@ -223,8 +223,32 @@ window.TrainerGroups = (() => {
           group.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо-результаты') : null,
           group.is_selected || data.current_group_id === group.id ? h('span', { class: 'chip good' }, 'Выбрана для программы дня') : null),
         h('p', { class: 'soft' }, 'Руководитель: ', nameOf(group.leader)),
-        h('div', { class: 'groups-card-foot' }, h('span', { class: 'small soft' }, `${count(group.member_count)} ${plural(group.member_count || 0, 'участник', 'участника', 'участников')}`),
-          group.joined && Number.isFinite(group.rating) ? h('span', { class: 'groups-points num' }, `${rating(group.rating)} / 100`) : null, icon('arrow')));
+        standingsPreview(group),
+        h('div', { class: 'groups-card-foot' }, h('span', { class: 'small soft' }, `${count(group.member_count)} ${plural(group.member_count || 0, 'участник', 'участника', 'участников')}`), icon('arrow')));
+    }
+    function standingsPreview(group) {
+      const preview = group.standings_preview;
+      if (!preview) return h('p', { class: 'small soft groups-card-preview-empty' }, 'Рейтинг доступен внутри группы.');
+      const top = list(preview.top).slice(0, 3), self = preview.self, gap = preview.gap_to_leader;
+      let selfLabel = '';
+      if (preview.has_results && self) {
+        const place = Number.isInteger(self.rank) && self.rank > 0 ? self.rank : null;
+        if (place === 1 && gap === 0) selfLabel = top.filter((person) => person.rank === 1).length > 1 ? 'Делите первое место' : 'Вы лидируете';
+        else if (place) {
+          selfLabel = `Ваше место: ${count(place)}`;
+          if (Number.isFinite(gap) && gap >= 0) selfLabel += ` · До лидера: ${rating(gap)} ${Number.isInteger(gap) ? plural(gap, 'балл', 'балла', 'баллов') : 'балла'}`;
+        }
+      } else if (!self && group.joined === false) selfLabel = 'Вы не участвуете';
+      return h('section', { class: 'groups-card-preview', 'aria-label': `Рейтинг недели: ${group.name}` },
+        h('div', { class: 'groups-card-preview-heading' }, h('span', null, 'Рейтинг недели'), h('span', { class: 'small soft' }, 'из 100')),
+        preview.has_results && top.length ? h('ol', { class: 'groups-card-standings', 'aria-label': 'Три лучших участника по рейтингу' }, top.map((person) => h('li', null,
+          h('span', { class: 'groups-card-place num', 'aria-label': `Место: ${person.rank || '—'}` }, person.rank || '—'),
+          avatar(person, 'groups-card-avatar'),
+          h('span', { class: 'groups-card-person' }, h('span', null, nameOf(person), person.is_self ? h('span', { class: 'groups-card-person-self' }, ' · вы') : null),
+            person.demonstration ? h('span', { class: 'groups-card-preview-demo' }, 'Демо') : null),
+          h('span', { class: 'groups-card-rating num', 'aria-label': Number.isFinite(person.rating) ? `${rating(person.rating)} из 100` : 'Рейтинг пока не рассчитан' }, Number.isFinite(person.rating) ? rating(person.rating) : '—'))))
+          : h('p', { class: 'small soft groups-card-preview-empty' }, 'Пока нет результатов'),
+        selfLabel ? h('p', { class: 'groups-card-self small' }, selfLabel) : null);
     }
     async function loadLeaders() {
       if (!app.state || !app.state.is_owner || leaders) return;

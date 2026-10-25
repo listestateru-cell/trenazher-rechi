@@ -31,6 +31,18 @@
 .groups-context { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
 .groups-card-foot { display: flex; gap: 16px; align-items: center; padding-top: 14px; margin-top: auto; border-top: 1px solid var(--line); }
 .groups-card-foot > :first-child { margin-right: auto; }
+.groups-card-preview { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+.groups-card-preview-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 14px; font-weight: 600; }
+.groups-card-standings { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.groups-card-standings li { display: grid; grid-template-columns: 22px 32px minmax(0,1fr) auto; align-items: center; gap: 10px; min-width: 0; min-height: 34px; }
+.groups-card-place { color: var(--ink-2); font-size: 14px; text-align: center; }
+.groups-card-avatar { width: 32px; height: 32px; font-size: 14px; border-radius: 50%; }
+.groups-card-person { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 15px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
+.groups-card-person-self { color: var(--ink-2); font-weight: 400; white-space: nowrap; }
+.groups-card-preview-demo { font-size: 11px; line-height: 1.4; font-weight: 400; color: var(--ink-2); }
+.groups-card-rating { font-size: 16px; font-weight: 650; white-space: nowrap; }
+.groups-card-self { padding-top: 12px; border-top: 1px solid var(--line); line-height: 1.5; color: var(--ink-2); }
+.groups-card-preview-empty { line-height: 1.5; }
 .groups-points { font-weight: 650; }
 .groups-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding-top: 32px; padding-bottom: 32px; }
 .groups-empty p { max-width: 66ch; }
@@ -207,6 +219,7 @@
   .groups-ranking thead th { font-size: 12px; }
   .groups-ranking-denominator { display: block; font-size: 12px; margin-top: 2px; }
   .groups-award-grid { grid-template-columns: minmax(0,1fr); }
+  .groups-card-standings li { gap: 8px; grid-template-columns: 18px 32px minmax(0,1fr) auto; }
   .groups-standings .groups-rank-col { width: 34px; }
   .groups-standings .groups-numeric-col { width: 70px; }
   .groups-standings .groups-ranking-points { font-size: 18px; }

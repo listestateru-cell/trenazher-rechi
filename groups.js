@@ -9,6 +9,7 @@ window.TrainerGroups = (() => {
   const score = (value) => value == null || !Number.isFinite(value) ? 'Пока нет' : value.toLocaleString('ru-RU', { maximumFractionDigits: 1 });
   const rating = (value) => value == null || !Number.isFinite(value) ? 'Пока нет' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
   const nameOf = (user) => user && (user.name || (user.username ? `@${user.username}` : 'Участник')) || 'Участник';
+  const avatar = (user, size = '') => window.TrainerProfiles ? TrainerProfiles.avatar(user, size) : h('span', { class: 'groups-person-mark', 'aria-hidden': 'true' }, nameOf(user).slice(0, 1).toUpperCase());
   const shortDate = (day, weekday = false) => {
     const parsed = new Date(`${day}T12:00:00`);
     return Number.isNaN(parsed.getTime()) ? '' : parsed.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(weekday ? { weekday: 'long' } : {}) });
@@ -57,6 +58,9 @@ window.TrainerGroups = (() => {
     let destroyed = false, loading = false, pending = false, data = null, error = null;
     let createOpen = false, createName = '', createLeader = '', createError = null, leaders = null;
     let inviteLink = null, leaveArmed = false;
+    let peopleQuery = '', people = null, peopleBusy = false, peopleError = null;
+    let testOpen = false, testUsers = null, testBusy = false, testError = null;
+    const testLinks = new Map();
     const alive = () => !destroyed && ctx.alive();
     const refresh = h('button', { class: 'btn ghost groups-refresh', type: 'button', onclick: () => load() }, icon('redo'), 'Обновить');
     render(ctx, root);
@@ -83,6 +87,12 @@ window.TrainerGroups = (() => {
         if (isJoin) {
           if (!code) throw new Error('В приглашении не хватает кода. Попросите руководителя отправить ссылку ещё раз.');
           data = await api('/api/groups/resolve', { method: 'POST', body: { code } });
+          const currentGroup = app.state && app.state.competition;
+          if (!data.joined && (!currentGroup || currentGroup.id === data.id)) {
+            const joined = await api(`${groupPath(data.id)}/join`, { method: 'POST', body: { invite: code } });
+            await syncState(joined);
+            if (alive()) location.hash = groupRoute(joined.id);
+          } else if (data.joined && alive()) location.hash = groupRoute(data.id);
         } else data = await api(gid ? `${groupPath(gid)}${weekQuery ? `?week=${enc(weekQuery)}` : ''}` : '/api/groups');
       } catch (caught) { error = caught; }
       loading = false;
@@ -109,23 +119,62 @@ window.TrainerGroups = (() => {
         h('button', { class: 'btn', type: 'button', disabled: pending, onclick: () => { createOpen = !createOpen; draw(); if (createOpen) loadLeaders(); } }, createOpen ? 'Закрыть форму' : 'Создать группу')),
       error ? errorNotice(error) : null,
       !data ? loadingCard() : [
-        data.pending_invite ? h('div', { class: 'card groups-pending-invite' }, h('div', null, h('h2', null, 'Вас пригласили в группу'), h('p', { class: 'soft' }, data.pending_invite.name || 'Совместная тренировка')),
-          h('a', { class: 'btn ghost', href: `#/groups/join/${enc(data.pending_invite.code || '')}` }, 'Посмотреть приглашение', icon('arrow'))) : null,
+        data.pending_invite ? h('div', { class: 'card groups-pending-invite' }, h('div', null, h('h2', null, data.pending_invite.requires_switch ? 'Приглашение в другую группу' : 'Вас пригласили в группу'), h('p', { class: 'soft' }, data.pending_invite.name || 'Совместная тренировка')),
+          h('a', { class: 'btn ghost', href: `#/groups/join/${enc(data.pending_invite.code || '')}` }, 'Открыть группу', icon('arrow'))) : null,
         createOpen ? createForm() : null,
         sectionHeading(app.state && app.state.is_owner ? 'Группы тренажёра' : 'Мои группы', h('span', { class: 'small soft' }, count(groups.length))),
         groups.length ? h('div', { class: 'groups-card-grid' }, groups.map((group) => groupCard(group)))
           : h('div', { class: 'card groups-empty' }, h('h2', null, 'Пока вы занимаетесь самостоятельно'), h('p', { class: 'soft' }, 'Создайте группу или откройте приглашение от знакомого. В группе у всех одинаковые задания дня и общий рейтинг.'),
             h('button', { class: 'btn ghost', type: 'button', onclick: () => { createOpen = true; draw(); loadLeaders(); } }, 'Создать первую группу')),
+        app.state && app.state.is_owner ? testPanel() : null,
         h('article', { class: 'card groups-friends' }, sectionHeading('Мои друзья', h('span', { class: 'small soft' }, count(list(referral.friends).length))),
-          h('p', { class: 'soft' }, 'Отправьте свою ссылку. Кто придёт по ней, появится в вашем списке друзей, если раньше его не пригласил другой человек. В группу вступают по отдельному приглашению.'),
-          copyLink(referral.url, 'Ваша ссылка для приглашения в тренажёр', 'Это приглашение в тренажёр, а не ваша личная ссылка для входа.'),
+          h('p', { class: 'soft' }, 'Отправьте свою ссылку. Приглашённый появится среди друзей. Если вы руководитель группы, после получения доступа он также вступит в неё автоматически.'),
+          copyLink(referral.url, 'Ваша ссылка для приглашения в тренажёр', 'Новый участник сначала ждёт одобрения владельца. Зарегистрированному достаточно открыть приглашение. Эта ссылка не открывает ваш личный профиль.'),
           referral.invited_by ? h('p', { class: 'small soft' }, 'Вас пригласил(а): ', nameOf(referral.invited_by)) : null,
           list(referral.friends).length ? h('ul', { class: 'groups-friend-list' }, referral.friends.map((friend) => h('li', null,
-            h('span', { class: 'groups-person-mark', 'aria-hidden': 'true' }, nameOf(friend).slice(0, 1).toUpperCase()),
-            h('span', { class: 'groups-person-name' }, nameOf(friend)),
+            avatar(friend),
+            h('span', { class: 'groups-person-name' }, nameOf(friend), friend.username ? h('small', { class: 'soft' }, ` @${friend.username}`) : null, friend.is_test ? h('small', { class: 'profile-test-label' }, 'Тест') : null),
             h('span', { class: 'small soft' }, friend.status === 'pending' ? 'Ожидает доступа' : ['blocked', 'closed'].includes(friend.status) ? 'Доступ закрыт' : 'В тренажёре'))))
             : h('p', { class: 'small soft' }, 'Здесь появятся люди, которые зарегистрируются по вашей ссылке.')),
       ]];
+    }
+    function testPanel() {
+      return h('article', { class: 'card groups-tests' }, sectionHeading('Тестовые профили', h('button', { class: 'btn ghost', type: 'button', onclick: () => { testOpen = !testOpen; draw(); if (testOpen && !testUsers) loadTests(); } }, testOpen ? 'Свернуть' : 'Открыть')),
+        h('p', { class: 'small soft' }, 'Доступны только вам. Это отдельные профили для проверки приложения; сообщения в Telegram им не отправляются.'),
+        testOpen ? h('div', { class: 'stack' },
+          testError ? errorNotice(testError) : null,
+          testBusy ? h('p', { role: 'status' }, 'Загружаю тестовые профили…') : null,
+          testUsers && testUsers.length ? h('ul', { class: 'groups-test-list' }, testUsers.map((user) => h('li', null,
+            h('div', { class: 'profile-identity' }, avatar(user), h('div', null, h('strong', null, nameOf(user)), h('p', { class: 'small soft' }, `@${user.username}`, ' · тестовый профиль'))),
+            testLinks.has(user.id) ? h('a', { class: 'btn ghost', href: testLinks.get(user.id), target: '_blank', rel: 'noopener noreferrer' }, 'Открыть профиль', icon('arrow'))
+              : h('button', { class: 'btn ghost', type: 'button', disabled: testBusy, onclick: () => openTest(user) }, 'Получить ссылку входа')))) : null,
+          h('button', { class: 'btn ghost', type: 'button', disabled: testBusy, onclick: createTests }, 'Создать три тестовых профиля'),
+          h('p', { class: 'small soft' }, 'Для добавления в вашу группу найдите их по началу ника test_. Чтобы пройти упражнение за тестового участника, откройте его отдельный профиль.')) : null);
+    }
+    async function loadTests() {
+      if (testBusy || !alive()) return;
+      testBusy = true; testError = null; draw();
+      try { const result = await api('/api/admin/test-users'); testUsers = list(result.users); }
+      catch (caught) { testError = caught; }
+      testBusy = false; draw();
+    }
+    async function createTests() {
+      if (testBusy) return;
+      testBusy = true; testError = null; draw();
+      try { const result = await api('/api/admin/test-users', { method: 'POST', body: { count: 3 } }); testUsers = list(result.users); }
+      catch (caught) { testError = caught; }
+      testBusy = false; draw();
+    }
+    async function openTest(user) {
+      if (testBusy) return;
+      testBusy = true; testError = null; draw();
+      try {
+        const result = await api(`/api/admin/test-users/${enc(user.id)}/open`, { method: 'POST', body: {} });
+        const link = new URL(result.url, location.href);
+        if (link.protocol !== 'https:' && !(link.protocol === 'http:' && ['localhost','127.0.0.1'].includes(link.hostname))) throw new Error('Не удалось открыть ссылку тестового профиля.');
+        testLinks.set(user.id, link.href);
+      } catch (caught) { testError = caught; }
+      testBusy = false; draw();
     }
     function groupCard(group) {
       return h('a', { class: 'card groups-group-card', href: groupRoute(group.id), 'data-group-id': group.id },
@@ -163,7 +212,7 @@ window.TrainerGroups = (() => {
       } }, h('h2', null, 'Новая группа'),
       field('Название группы', nameInput, 'Его будут видеть все участники.'),
       leaderSelect ? field('Руководитель', leaderSelect, 'Руководитель тоже участвует в рейтинге на общих условиях.') : null,
-      h('p', { class: 'small soft' }, 'После создания вы получите ссылку для приглашения участников. Каждый сам подтвердит вступление.'),
+      h('p', { class: 'small soft' }, 'После создания вы получите ссылку: она автоматически добавляет приглашённых в группу. Новый пользователь сначала ждёт одобрения владельца.'),
       createError ? errorNotice(createError) : null,
       h('div', { class: 'groups-form-actions' }, h('button', { class: 'btn', type: 'submit', disabled: pending }, pending ? 'Создаю…' : 'Создать группу'),
         h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: () => { createOpen = false; draw(); } }, 'Отмена')));
@@ -187,6 +236,7 @@ window.TrainerGroups = (() => {
         week.current && today ? todayCard(group, today) : null,
         duelsCard(group),
         leaderboard(group),
+        group.is_leader || app.state && app.state.is_owner ? peoplePanel() : null,
         !self ? ratingBreakdown(null) : null,
         weekDays(group, daily),
         h('details', { class: 'card groups-rules' }, h('summary', null, 'Как устроено соревнование'),
@@ -199,11 +249,47 @@ window.TrainerGroups = (() => {
             'В понедельник начинается новая неделя с нуля. Результаты прошлых недель остаются в архиве.',
           ]).map((rule) => h('li', null, rule))), h('p', { class: 'small soft groups-privacy' }, joinNotice)),
         group.is_leader || app.state && app.state.is_owner ? h('article', { class: 'card groups-invite-card' }, sectionHeading('Пригласить в группу'),
-          h('p', { class: 'soft' }, 'Отправьте ссылку друзьям. Они увидят название группы и подтвердят вступление.'),
+          h('p', { class: 'soft' }, 'Отправьте ссылку друзьям: после входа они автоматически появятся в этой группе. Зарегистрированный участник использует свой профиль, новый сначала ждёт одобрения владельца.'),
           ownInvite ? copyLink(ownInvite, 'Ссылка для вступления в эту группу') : h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: makeInvite }, pending ? 'Готовлю ссылку…' : 'Получить приглашение')) : null,
         group.joined && !group.is_leader ? h('details', { class: 'groups-leave' }, h('summary', null, 'Участие в группе'), h('p', { class: 'small soft' }, 'Вы сможете снова вступить по приглашению. Ваши личные занятия останутся в истории.'),
           h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: leaveGroup }, pending ? 'Выхожу…' : leaveArmed ? 'Подтвердить выход' : 'Выйти из группы')) : null,
       ];
+    }
+    function peoplePanel() {
+      const input = h('input', { id: 'groups-find-person', class: 'groups-input', type: 'search', value: peopleQuery,
+        placeholder: '@nickname', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, minlength: 2, maxlength: 33,
+        oninput: (event) => { peopleQuery = event.target.value; } });
+      return h('article', { class: 'card groups-people stack' }, h('h2', null, 'Добавить по Telegram-нику'),
+        h('p', { class: 'soft' }, 'Найдите человека, которому владелец уже открыл доступ к тренажёру. В группе будут видны имя, фото и общие результаты; личные записи остаются закрытыми.'),
+        h('form', { class: 'groups-people-search', onsubmit: async (event) => { event.preventDefault(); await searchPeople(); } },
+          field('Telegram-ник', input, 'Введите хотя бы две буквы ника. Можно без @.'),
+          h('button', { class: 'btn ghost', type: 'submit', disabled: peopleBusy }, peopleBusy ? 'Ищу…' : 'Найти')),
+        peopleError ? errorNotice(peopleError) : null,
+        people ? people.length ? h('ul', { class: 'groups-test-list' }, people.map((person) => h('li', null,
+          h('div', { class: 'profile-identity' }, avatar(person), h('div', null, h('strong', null, nameOf(person)),
+            h('p', { class: 'small soft' }, `@${person.username}`, person.is_test ? ' · тестовый профиль' : ''))),
+          person.already_joined ? h('span', { class: 'chip' }, 'Уже в группе') : person.in_other_group ? h('span', { class: 'small soft' }, 'Участвует в другой группе')
+            : h('button', { class: 'btn ghost', type: 'button', disabled: peopleBusy || pending, onclick: () => addPerson(person) }, 'Добавить'))))
+          : h('p', { class: 'small soft', role: 'status' }, 'Никого не нашли. Проверьте ник: человек должен сначала зарегистрироваться в боте и получить доступ.') : null);
+    }
+    async function searchPeople() {
+      if (peopleBusy || pending) return;
+      if (peopleQuery.trim().replace(/^@/, '').length < 2) { peopleError = new Error('Введите хотя бы две буквы Telegram-ника.'); draw(); return; }
+      peopleBusy = true; peopleError = null; draw();
+      try { const result = await api(`${groupPath(gid)}/people?q=${enc(peopleQuery.trim())}`); people = list(result.users); }
+      catch (caught) { peopleError = caught; }
+      peopleBusy = false; draw();
+    }
+    async function addPerson(person) {
+      if (peopleBusy || pending) return;
+      peopleBusy = true; peopleError = null; draw();
+      try {
+        await api(`${groupPath(gid)}/members`, { method: 'POST', body: { user_id: person.id } });
+        person.already_joined = true;
+        data = await api(groupPath(gid));
+        if (alive()) toast(`${nameOf(person)} добавлен в группу`);
+      } catch (caught) { peopleError = caught; }
+      peopleBusy = false; draw();
     }
     function weekBar(group) {
       const week = group.week || {};
@@ -266,7 +352,7 @@ window.TrainerGroups = (() => {
           h('thead', null, h('tr', null, h('th', { scope: 'col', class: 'groups-rank-col', 'aria-label': 'Место' }, '№'), h('th', { scope: 'col' }, 'Участник'), h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Рейтинг'), h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Тренер'))),
           h('tbody', null, rows.map((person) => h('tr', { class: person.is_self ? 'groups-self' : '' },
             h('td', { class: 'groups-rank num' }, person.rank || '—'),
-            h('th', { scope: 'row', class: 'groups-ranking-person' }, h('span', null, nameOf(person)), h('span', { class: 'groups-person-label small' }, [person.is_self ? 'Вы' : '', person.is_leader ? 'Руководитель' : ''].filter(Boolean).join(' · ')),
+            h('th', { scope: 'row', class: 'groups-ranking-person' }, h('div', { class: 'profile-identity' }, avatar(person, 'profile-small'), h('div', null, h('span', null, nameOf(person)), person.is_test ? h('span', { class: 'profile-test-label' }, 'Тест') : null)), h('span', { class: 'groups-person-label small' }, [person.is_self ? 'Вы' : '', person.is_leader ? 'Руководитель' : ''].filter(Boolean).join(' · ')),
               h('span', { class: 'groups-person-label small' }, `Упражнений: ${count(person.completed)} · Дней: ${count(person.active_days)}`),
               h('span', { class: 'groups-person-label small' }, `Слова: ${score(person.vocabulary_grade)} / 10 · Регулярность: ${count(person.training_points)} / 14`),
               person.provisional ? h('span', { class: 'groups-person-label small' }, 'Предварительный рейтинг') : null),
@@ -286,14 +372,17 @@ window.TrainerGroups = (() => {
         })));
     }
     function joinPage() {
-      return [crumb('К моим группам'), header('Приглашение в группу', 'Сначала посмотрите, кто вас приглашает и что будет видно другим.'), error ? errorNotice(error) : null,
+      const currentGroup = app.state && app.state.competition;
+      const conflict = currentGroup && data && currentGroup.id !== data.id;
+      return [crumb('К моим группам'), header('Вступление по приглашению', 'Ссылка автоматически добавляет в группу после получения доступа к тренажёру.'), error ? errorNotice(error) : null,
         !data ? loadingCard() : h('article', { class: 'card groups-join-card' }, h('span', { class: 'groups-eyebrow' }, 'Совместная речевая практика'), h('h2', null, data.name),
           h('p', { class: 'soft' }, 'Руководитель: ', nameOf(data.leader)), h('p', { class: 'small soft' }, `${count(data.member_count)} ${plural(data.member_count || 0, 'участник', 'участника', 'участников')}`),
           h('div', { class: 'groups-join-about' }, h('h3', null, 'Одна программа для всей группы'), h('p', null, 'Пять общих заданий в день и поединки между участниками. Рейтинг учитывает оценки тренера, словесные раунды и регулярность занятий. С понедельника начинается новая неделя, прошлые результаты сохраняются.')),
           h('p', { class: 'groups-join-privacy' }, joinNotice),
-          data.joined ? h('a', { class: 'btn', href: groupRoute(data.id) }, 'Открыть мою группу', icon('arrow'))
+          conflict ? h('div', { class: 'stack' }, h('p', { class: 'soft' }, `Сейчас вы участвуете в группе «${currentGroup.name || 'Текущая группа'}». Сначала выйдите из неё, затем откройте приглашение снова.`),
+            h('a', { class: 'btn ghost', href: groupRoute(currentGroup.id) }, 'Открыть текущую группу')) : data.joined ? h('a', { class: 'btn', href: groupRoute(data.id) }, 'Открыть мою группу', icon('arrow'))
             : h('button', { class: 'btn', type: 'button', disabled: pending, onclick: () => joinGroup(data.id, code) }, pending ? 'Вступаю…' : 'Вступить в группу'),
-          h('a', { class: 'groups-decline', href: '#/groups' }, 'Пока не вступать'))];
+          h('a', { class: 'groups-decline', href: '#/groups' }, 'К моим группам'))];
     }
     async function joinGroup(id, invite) {
       if (pending) return;

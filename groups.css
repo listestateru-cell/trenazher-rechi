@@ -144,6 +144,20 @@
   .groups-join-card h2 { font-size: 24px; }
   .groups-day > summary { gap: 8px; }
 }
+.groups-tests, .groups-people { display: flex; flex-direction: column; gap: 14px; }
+.groups-test-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.groups-test-list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-block: 12px; border-top: 1px solid var(--line); }
+.groups-test-list li .btn { min-height: 44px; }
+.groups-people-search { display: flex; align-items: flex-start; gap: 12px; }
+.groups-people-search .groups-field { flex: 1; min-width: 0; }
+.groups-people-search > .btn { margin-top: 30px; }
+@media (max-width: 767px) {
+  .groups-people-search { flex-direction: column; align-items: stretch; }
+  .groups-people-search > .btn { margin-top: 0; }
+  .groups-test-list .btn { width: 100%; }
+  .groups-ranking .profile-identity { align-items: flex-start; gap: 6px; }
+  .groups-ranking .profile-small { width: 26px; height: 26px; font-size: 12px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .groups-view *, .groups-view *::before, .groups-view *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -7,6 +7,8 @@ window.TrainerDuels = (() => {
   const path = (gid) => `/api/groups/${enc(gid)}/duels`;
   const finished = (match) => ['done', 'complete'].includes(match.status);
   const own = (match) => (match.players || []).find((player) => player.is_self);
+  const demonstration = (match) => match.demonstration === true;
+  const number = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
 
   function judgement(session) {
     return ((session.analysis || {}).result || {}).word_judgement || null;
@@ -95,6 +97,7 @@ window.TrainerDuels = (() => {
       if (!alive()) return;
       const matches = data && data.matches || [], mine = matches.filter(inMatch);
       const selected = matches.find((match) => match.id === (armedId || focus));
+      const demoWeek = data && data.phase === 'demo';
       const nodes = [
         h('a', { class: 'groups-back', href: `#/groups/${enc(gid)}` }, icon('back'), 'К группе'),
         h('header', { class: 'groups-heading' }, h('div', { class: 'groups-heading-copy' }, h('p', { class: 'groups-eyebrow' }, 'Минута ассоциаций'),
@@ -102,8 +105,11 @@ window.TrainerDuels = (() => {
         action(loading ? 'Обновляю…' : 'Обновить', () => load(), loading || recording || starting)),
         error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
         data ? h('p', { class: 'soft' }, data.week && (data.week.label || `${data.week.start} — ${data.week.end}`) || '', ' · ',
-          ({ finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём проверки записанных ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
-        data && data.podium && data.podium.length ? h('div', { class: 'card stack' }, h('h2', null, 'Итог турнира'),
+          ({ demo: 'Демонстрационный круговой этап', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём проверки записанных ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
+        data && (data.demonstration || matches.some(demonstration)) ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные поединки' },
+          h('h2', null, 'Демонстрационные поединки'), h('p', null, 'Количество слов задано для примера. Микрофон, записи и тренер не использовались.'),
+          h('p', { class: 'small soft' }, 'Баллы навыка меняют общий рейтинг группы. Турнирные очки показывают, кто выиграл встречи.')) : null,
+        data && !demoWeek && data.podium && data.podium.length ? h('div', { class: 'card stack' }, h('h2', null, 'Итог турнира'),
           h('ol', { class: 'duel-podium' }, data.podium.slice(0,3).map((id, index) => h('li', null, h('span', { class: 'num' }, `${index + 1} место`), h('strong', null, ((data.table || []).find((row) => row.user_id === id) || {}).name || 'Участник'))))) : null,
         h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит поединок и за что начисляют баллы'),
           h('ol', { class: 'list' }, h('li', null, 'Договоритесь о времени. Оба откройте эту страницу и нажмите «Готов». Сначала браузер проверит микрофон.'),
@@ -113,12 +119,15 @@ window.TrainerDuels = (() => {
             h('li', null, 'Во встрече побеждает тот, кто назвал больше подходящих слов: победа — 3 турнирных очка, ничья — по 1. Это отдельная таблица отбора в финал.'),
             h('li', null, 'В воскресенье четыре лучших играют полуфиналы 1–4 и 2–3. Победители встречаются за первое место, проигравшие — за третье. Незавершённая встреча не превращается в выдуманную победу.')),
           h('p', { class: 'small soft' }, 'Держите экран открытым и не переключайте приложения во время записи. При обрыве связи сохраните запись; несостоявшуюся встречу можно повторить с согласия обоих. Чужие аудио и расшифровки не открываются.')),
-        selected ? matchCard(selected, true) : null,
+        selected && !demoWeek ? matchCard(selected, true) : null,
         blob ? h('div', { class: 'card stack', role: 'status' }, h('h2', null, uploadBusy ? 'Отправляю запись…' : 'Запись осталась на устройстве'),
           h('p', { class: 'soft' }, 'Проверка связи не удаляет запись. Для зачёта сервер также проверяет время отправки и фактическую длительность.'),
           h('div', { class: 'row' }, action('Повторить отправку', sendAudio, uploadBusy, true), downloadUrl ? h('a', { class: 'btn ghost', href: downloadUrl, download: 'Поединок.webm' }, 'Скачать запись') : null)) : null,
         privateSession ? privateResult(privateSession) : null,
-        !data ? h('div', { class: 'card', role: 'status' }, 'Загружаю встречи…') : [
+        !data ? h('div', { class: 'card', role: 'status' }, 'Загружаю встречи…') : demoWeek ? [
+          tableCard(data.table || data.league || []), h('h2', null, 'Демонстрационные встречи'),
+          h('div', { class: 'duel-match-list' }, matches.map((match) => matchCard(match))),
+        ] : [
           h('h2', null, 'Ваши встречи'), mine.length ? h('div', { class: 'duel-match-list' }, mine.filter((match) => !selected || selected.id !== match.id).map((match) => matchCard(match))) : h('div', { class: 'card' }, h('p', { class: 'soft' },
             (data.table || []).length >= 2 ? 'У вас пока нет встреч в этой сетке. Участие и состав группы можно проверить в кабинете. Круговой этап проходит с понедельника по субботу; воскресенье отведено финалам.' : 'Для поединка нужны хотя бы два участника группы. Руководитель может отправить приглашение знакомым.')),
           tableCard(data.table || data.league || []),
@@ -128,32 +137,42 @@ window.TrainerDuels = (() => {
       paintTimer();
     }
     function matchCard(match, selected = false) {
-      const self = own(match), done = finished(match);
+      const self = own(match), demo = demonstration(match), done = finished(match) || demo;
       const result = match.results || [];
       return h('article', { class: `card duel-match ${selected ? 'duel-selected' : ''}`, 'data-match': match.id },
-        h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), h('span', { class: 'small soft' }, statuses[match.status] || match.status)),
+        h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
+          h('span', { class: 'small soft' }, demo ? 'Пример результата' : statuses[match.status] || match.status)),
         h('h3', null, (match.players || []).map((player) => player.name + (player.is_self ? ' (вы)' : '')).join(' — ')),
-        h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))),
+        !demo ? h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))) : null,
         match.topic ? h('p', { class: 'duel-topic' }, 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, 'Слово откроется в момент старта.'),
-        match.own_error ? h('p', { class: 'groups-error', role: 'alert' }, match.own_error, ' Подробности — в «Мой ответ».') : null,
-        ['countdown', 'live'].includes(match.status) || recording && armedId === match.id ? h('div', { class: 'duel-clock num', 'data-duel-clock': match.id, role: 'timer', 'aria-label': 'Время поединка' }, '—') : null,
+        !demo && match.own_error ? h('p', { class: 'groups-error', role: 'alert' }, match.own_error, ' Подробности — в «Мой ответ».') : null,
+        !demo && (['countdown', 'live'].includes(match.status) || recording && armedId === match.id) ? h('div', { class: 'duel-clock num', 'data-duel-clock': match.id, role: 'timer', 'aria-label': 'Время поединка' }, '—') : null,
         recording && armedId === match.id ? h('p', { class: 'duel-recording', role: 'status' }, 'Идёт запись. Через минуту она отправится автоматически.') : null,
-        done ? h('div', { class: 'duel-results' }, result.map((row) => h('p', null,
-          ((match.players || []).find((player) => player.id === row.user_id) || {}).name || 'Участник', ': ', `${row.count} слов · ${row.grade} балл. навыка`)),
+        done ? h('div', { class: 'duel-results' }, result.map((row) => h('div', { class: 'duel-result-row' },
+          h('strong', null, ((match.players || []).find((player) => player.id === row.user_id) || {}).name || 'Участник'),
+          h('p', { class: 'num' }, `Слова: ${number(row.count)} · Навык: ${number(row.grade)}/10`),
+          h('p', { class: 'small soft' }, `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
           h('p', { class: 'soft' }, match.draw ? 'Ничья' : `Победитель: ${((match.players || []).find((player) => player.id === match.winner_id) || {}).name || '—'}`)) : null,
-        h('div', { class: 'row duel-actions' },
+        !demo ? h('div', { class: 'row duel-actions' },
           self && match.can_ready && !recording && !starting && !blob ? action('Готов · проверить микрофон', () => ready(match), false, true) : null,
           self && self.ready && !match.own_session_id && armedId !== match.id && ['waiting','countdown','live'].includes(match.status) && !recording && !starting && !blob
             ? action('Включить микрофон и продолжить', () => ready(match), false, true) : null,
           self && match.can_cancel && !recording && !starting ? action('Отменить готовность', () => mutate(match, 'cancel')) : null,
           self && match.can_reset && !recording && !starting ? action((match.reset_requested_by || []).includes(self.id) ? 'Ждём согласия соперника' : 'Согласиться на повтор', () => mutate(match, 'reset'), (match.reset_requested_by || []).includes(self.id)) : null,
-          match.own_session_id && !recording ? h('a', { class: 'btn ghost', href: `#/s/${enc(match.own_session_id)}` }, 'Мой ответ') : null));
+          match.own_session_id && !recording ? h('a', { class: 'btn ghost', href: `#/s/${enc(match.own_session_id)}` }, 'Мой ответ') : null) : null);
     }
     function tableCard(rows) {
-      return h('article', { class: 'card stack' }, h('h2', null, 'Турнирная таблица'), h('p', { class: 'small soft' }, 'Очки встреч определяют выход в воскресные финалы. Общий речевой рейтинг находится в кабинете группы.'),
-        rows.length ? h('table', { class: 'groups-ranking' }, h('caption', { class: 'groups-sr-only' }, 'Отбор по результатам поединков'),
-          h('thead', null, h('tr', null, ['Место', 'Участник', 'В–Н–П', 'Очки'].map((title) => h('th', { scope: 'col' }, title)))),
-          h('tbody', null, rows.map((row) => h('tr', null, h('td', { class: 'num' }, row.rank || '—'), h('th', { scope: 'row' }, row.name), h('td', { class: 'num' }, `${row.wins}–${row.draws}–${row.losses}`), h('td', { class: 'num' }, row.points ?? row.league_points ?? 0)))))
+      return h('article', { class: 'card stack' }, h('h2', null, 'Турнирная таблица'),
+        h('p', { class: 'small soft' }, data.phase === 'demo' ? 'Пример кругового этапа: победа — 3 очка, ничья — 1, поражение — 0. Финалы в этом примере не разыграны.' : 'Очки встреч определяют выход в воскресные финалы.'),
+        h('p', { class: 'small soft' }, 'В–Н–П: победы, ничьи, поражения. Средний балл навыка за поединки умножается на 3 и добавляется к общему рейтингу в кабинете группы.'),
+        rows.length ? h('table', { class: 'groups-ranking duel-ranking' }, h('caption', { class: 'groups-sr-only' }, 'Отбор по результатам поединков'),
+          h('thead', null, h('tr', null, [ ['Место', 'duel-rank-col'], ['Участник', ''], ['В–Н–П', 'duel-record-col'], ['Очки', 'duel-points-col'] ].map(([title, className]) => h('th', { scope: 'col', class: className }, title)))),
+          h('tbody', null, rows.map((row) => h('tr', null, h('td', { class: 'num' }, row.rank || '—'),
+            h('th', { scope: 'row', class: 'duel-ranking-person' }, h('span', null, row.name), row.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
+              row.words_average != null || row.accepted_average != null ? h('span', { class: 'duel-ranking-detail small soft' }, `В среднем слов: ${number(row.words_average ?? row.accepted_average)}`) : null,
+              row.skill_score != null ? h('span', { class: 'duel-ranking-detail small soft' }, `Навык: ${number(row.skill_score)}/10`) : null,
+              row.combined_rating != null ? h('span', { class: 'duel-ranking-detail small soft' }, `Общий рейтинг: ${number(row.combined_rating)}/100`) : null),
+            h('td', { class: 'num' }, `${row.wins ?? 0}–${row.draws ?? 0}–${row.losses ?? 0}`), h('td', { class: 'num' }, row.points ?? row.league_points ?? 0)))))
           : h('p', { class: 'soft' }, 'Результаты появятся после первой завершённой встречи.'));
     }
     async function load() {
@@ -164,7 +183,7 @@ window.TrainerDuels = (() => {
         setClock(data.server_now);
         if (armedId) {
           const match = data.matches.find((item) => item.id === armedId);
-          if (match && !starting && !recording && !blob && ['expired', 'cancelled', 'done', 'complete'].includes(match.status)) { armedId = null; closeOwnMic(); }
+          if (match && !starting && !recording && !blob && (demonstration(match) || ['expired', 'cancelled', 'done', 'complete'].includes(match.status))) { armedId = null; closeOwnMic(); }
         }
         if (session && !recording && !blob && (session.analysis || {}).status !== 'done') {
           const fresh = await api(`/api/sessions/${enc(session.id)}`);
@@ -184,7 +203,7 @@ window.TrainerDuels = (() => {
       pollTimer = setTimeout(load, ms);
     }
     async function ready(match) {
-      if (pending || recording || starting || blob) return;
+      if (demonstration(match) || pending || recording || starting || blob) return;
       pending = true; error = ''; draw();
       const profile = window.TrainerDrafts && TrainerDrafts.profile && TrainerDrafts.profile();
       try {
@@ -216,7 +235,7 @@ window.TrainerDuels = (() => {
       pending = false; if (alive()) await load();
     }
     async function mutate(match, verb) {
-      if (pending) return;
+      if (demonstration(match) || pending) return;
       pending = true; error = ''; draw();
       try {
         await api(`${path(gid)}/${enc(match.id)}/${verb}`, { method: 'POST', body: {} });
@@ -234,10 +253,11 @@ window.TrainerDuels = (() => {
         node.textContent = now() < start ? `Старт через ${Math.max(0, Math.ceil((start - now()) / 1000))}` : `${Math.max(0, Math.ceil((end - now()) / 1000))} с`;
       });
       const match = data && data.matches.find((item) => item.id === armedId);
-      if (match && !recording && !starting && !session && now() >= Date.parse(match.start_at) && now() < Date.parse(match.end_at)) startRecording(match);
+      if (match && !demonstration(match) && !recording && !starting && !session && now() >= Date.parse(match.start_at) && now() < Date.parse(match.end_at)) startRecording(match);
       if (recording && session && now() >= Date.parse(session.duel_end_at)) finishRecording();
     }
     async function startRecording(match) {
+      if (demonstration(match)) return;
       if (starting || recording || !mic.live()) return;
       starting = true;
       try {

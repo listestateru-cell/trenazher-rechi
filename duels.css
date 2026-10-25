@@ -8,6 +8,13 @@
 .duel-clock { font-size: clamp(26px,7vw,42px); font-weight: 650; }
 .duel-recording { color: var(--bad-ink); }
 .duel-results { padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); display: grid; gap: 8px; }
+.duel-result-row { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.duel-result-row p { margin: 0; overflow-wrap: anywhere; }
+.duel-ranking .duel-rank-col { width: 62px; }
+.duel-ranking .duel-record-col { width: 88px; }
+.duel-ranking .duel-points-col { width: 62px; }
+.duel-ranking-person { font-weight: 600; overflow-wrap: anywhere; }
+.duel-ranking-detail { display: block; margin-top: 5px; font-weight: 400; line-height: 1.5; }
 .duel-actions { margin-top: auto; flex-wrap: wrap; }
 .duels-view summary { min-height: 44px; padding-block: 10px; cursor: pointer; font-weight: 600; }
 .duel-rules .list { margin-top: 12px; }
@@ -24,4 +31,7 @@
   .duel-actions .btn { flex: 1 1 160px; }
   .duels-view .groups-ranking { font-size: 14px; }
   .duels-view .groups-ranking th, .duels-view .groups-ranking td { padding: 10px 5px; }
+  .duel-ranking .duel-rank-col { width: 39px; }
+  .duel-ranking .duel-record-col { width: 62px; }
+  .duel-ranking .duel-points-col { width: 40px; }
 }

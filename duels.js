@@ -9,6 +9,8 @@ window.TrainerDuels = (() => {
   const own = (match) => (match.players || []).find((player) => player.is_self);
   const demonstration = (match) => match.demonstration === true;
   const number = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
+  const avatar = (person) => window.TrainerProfiles ? TrainerProfiles.avatar(person, 'duel-person-avatar') : null;
+  const identity = (person, className = 'duel-podium-identity') => h('span', { class: className }, avatar(person), h('strong', null, person.name || 'Участник'));
 
   function judgement(session) {
     return ((session.analysis || {}).result || {}).word_judgement || null;
@@ -117,7 +119,7 @@ window.TrainerDuels = (() => {
           h('p', { class: 'small soft' }, 'Баллы навыка меняют общий рейтинг группы. Турнирные очки показывают, кто выиграл встречи.')) : null,
         demoFinals ? finalWeek(matches) : null,
         data && !demoWeek && data.podium && data.podium.length ? h('div', { class: 'card stack' }, h('h2', null, 'Итог турнира'),
-          h('ol', { class: 'duel-podium' }, data.podium.slice(0,3).map((id, index) => h('li', null, h('span', { class: 'num' }, `${index + 1} место`), h('strong', null, ((data.table || []).find((row) => row.user_id === id) || {}).name || 'Участник'))))) : null,
+          h('ol', { class: 'duel-podium' }, data.podium.slice(0,3).map((id, index) => h('li', null, h('span', { class: 'num' }, `${index + 1} место`), identity((data.table || []).find((row) => String(row.user_id) === String(id)) || { name: 'Участник' }))))) : null,
         h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит поединок и за что начисляют баллы'),
           h('ol', { class: 'list' }, h('li', null, 'Круговой этап проходит в субботу, финальные встречи — в воскресенье. Договоритесь о времени. В день встречи оба откройте эту страницу и нажмите «Готов». Сначала браузер проверит микрофон.'),
             h('li', null, 'После подтверждения обоих начнётся общий отсчёт. Слово откроется одновременно с началом минуты. Называйте подходящие слова по одному.'),
@@ -157,7 +159,7 @@ window.TrainerDuels = (() => {
         h('div', { class: 'row' }, h('h2', null, 'Итог недели'), h('span', { class: 'groups-demo-label' }, 'Демо')),
         h('p', { class: 'small soft' }, 'Финал определил 1–2 места. Матч за третье место — 3–4. Общий рейтинг группы считается отдельно.'),
         h('ol', { class: 'duel-podium duel-podium-final' }, (data.podium || []).slice(0, 4).map((id, index) => h('li', null,
-          h('span', { class: 'duel-place num' }, `${index + 1} место`), h('strong', null, person(id).name),
+          h('span', { class: 'duel-place num' }, `${index + 1} место`), identity(person(id)),
           h('span', { class: 'small soft' }, ['Победитель недели', 'Финалист', 'Победа в матче за 3 место', 'Участник полуфинала'][index]))))),
       h('section', { class: 'card stack duel-bracket', 'aria-label': 'Демонстрационная сетка финалов' },
         h('h2', null, 'Сетка финалов'),
@@ -183,8 +185,8 @@ window.TrainerDuels = (() => {
         h('ol', { class: 'duel-bracket-players' }, players.map((player) => {
           const row = result.find((item) => item.user_id === player.id) || {}, won = match.winner_id === player.id;
           return h('li', { class: won ? 'duel-bracket-winner' : '' },
-            h('div', { class: 'duel-bracket-person' }, h('strong', null, player.name),
-              h('span', { class: 'small soft' }, `Навык: ${number(row.grade)}/10`, won ? ' · Победа' : '')),
+            h('div', { class: 'duel-bracket-identity' }, avatar(player), h('div', { class: 'duel-bracket-person' }, h('strong', null, player.name),
+              h('span', { class: 'small soft' }, `Навык: ${number(row.grade)}/10`, won ? ' · Победа' : ''))),
             h('div', { class: 'duel-bracket-count num' }, h('strong', null, number(row.count)), h('span', { class: 'small soft' }, 'Слова')));
         })),
         h('p', { class: 'duel-bracket-outcome small' }, match.draw ? 'Ничья' : `Победитель: ${(players.find((player) => player.id === match.winner_id) || {}).name || '—'}`));
@@ -196,7 +198,9 @@ window.TrainerDuels = (() => {
       return h('article', { class: `card duel-match ${selected ? 'duel-selected' : ''}`, 'data-match': match.id },
         h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
           h('span', { class: 'small soft' }, demo ? 'Пример результата' : statuses[match.status] || match.status)),
-        h('h3', null, (match.players || []).map((player) => player.name + (player.is_self ? ' (вы)' : '')).join(' — ')),
+        h('h3', { class: 'duel-match-heading' }, (match.players || []).flatMap((player, index) => [
+          index ? h('span', { 'aria-hidden': 'true' }, '—') : null,
+          h('span', { class: 'duel-match-person' }, avatar(player), h('span', null, player.name + (player.is_self ? ' (вы)' : '')))])),
         !demo ? h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))) : null,
         match.topic ? h('p', { class: 'duel-topic' }, 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, 'Слово откроется в момент старта.'),
         !demo && match.own_error ? h('p', { class: 'groups-error', role: 'alert' }, match.own_error, ' Подробности — в «Мой ответ».') : null,
@@ -233,7 +237,7 @@ window.TrainerDuels = (() => {
         rows.length ? h('table', { class: 'groups-ranking duel-ranking' }, h('caption', { class: 'groups-sr-only' }, 'Отбор по результатам поединков'),
           h('thead', null, h('tr', null, [ [frozenOrder ? 'Отбор' : 'Место', 'duel-rank-col'], ['Участник', ''], ['В–Н–П', 'duel-record-col'], ['Очки', 'duel-points-col'] ].map(([title, className]) => h('th', { scope: 'col', class: className }, title)))),
           h('tbody', null, rows.map((row) => h('tr', null, h('td', { class: 'num' }, row.rank || '—'),
-            h('th', { scope: 'row', class: 'duel-ranking-person' }, h('span', null, row.name), row.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
+            h('th', { scope: 'row', class: 'duel-ranking-person' }, identity(row, 'duel-ranking-identity'), row.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
               row.words_average != null || row.accepted_average != null ? h('span', { class: 'duel-ranking-detail small soft' }, `В среднем слов: ${number(row.words_average ?? row.accepted_average)}`) : null,
               row.skill_score != null ? h('span', { class: 'duel-ranking-detail small soft' }, `Навык: ${number(row.skill_score)}/10`) : null,
               row.combined_rating != null ? h('span', { class: 'duel-ranking-detail small soft' }, `Общий рейтинг: ${number(row.combined_rating)}/100`) : null),

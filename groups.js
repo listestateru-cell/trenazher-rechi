@@ -67,6 +67,14 @@ window.TrainerGroups = (() => {
     let testOpen = false, testUsers = null, testBusy = false, testError = null;
     const testLinks = new Map();
     const expandedResults = new Set();
+    let avatarData = null, avatarBusy = false, avatarError = '', avatarMessage = '', avatarOpen = false;
+    let avatarDraft = null;
+    let avatarControls = [], avatarPreview = null, avatarPreviewLabel = null, avatarSave = null, avatarStatus = null;
+    const avatarEndpoint = () => `${groupPath(gid)}/avatar`;
+    const avatarChoices = () => list(avatarData && avatarData.characters).filter((item) =>
+      window.TrainerProfiles && TrainerProfiles.hasCharacter ? TrainerProfiles.hasCharacter(item.id) : /^[a-z][a-z0-9-]{0,40}$/.test(item.id));
+    const savedHero = () => avatarData && avatarData.character_id || null;
+    const heroAvailable = (item) => item && (item.available !== false || item.id === savedHero());
     const alive = () => !destroyed && ctx.alive();
     const refresh = h('button', { class: 'btn ghost groups-refresh', type: 'button', onclick: () => load() }, icon('redo'), 'Обновить');
     render(ctx, root);
@@ -81,13 +89,13 @@ window.TrainerGroups = (() => {
     }
     function draw() {
       if (!alive()) return;
-      refresh.disabled = loading || pending;
+      refresh.disabled = loading || pending || avatarBusy;
       refresh.setAttribute('aria-busy', String(loading));
       refresh.replaceChildren(icon('redo'), loading ? 'Обновляю…' : 'Обновить');
       root.replaceChildren(...(isJoin ? joinPage() : gid ? detailPage() : indexPage()).flat(Infinity).filter((node) => node != null && node !== false));
     }
     async function load() {
-      if (loading || pending || !alive()) return;
+      if (loading || pending || avatarBusy || !alive()) return;
       loading = true; error = null; draw();
       try {
         if (isJoin) {
@@ -100,6 +108,8 @@ window.TrainerGroups = (() => {
           } else if (data.joined && alive()) location.hash = groupRoute(data.id);
         } else {
           data = await api(gid ? `${groupPath(gid)}${weekQuery ? `?week=${enc(weekQuery)}` : ''}` : '/api/groups');
+          if (gid && data.joined) await loadAvatar();
+          else { avatarData = null; avatarDraft = null; avatarError = ''; }
           // Обновление сбрасывает локальные отметки: адресат мог принять или
           // отклонить приглашение с момента предыдущего поиска.
           invitedPeople.clear(); people = null; circlePeople = null; circleOpen = false;
@@ -304,6 +314,7 @@ window.TrainerGroups = (() => {
         error ? errorNotice(error) : null,
         h('div', { class: 'groups-context' }, profileLabel(group) ? h('span', { class: 'chip' }, profileLabel(group)) : null,
           h('p', { class: 'small soft' }, 'Задания и результаты этой группы учитываются отдельно от других групп.')),
+        group.joined ? groupAvatarPanel(group) : null,
         weekBar(group),
         group.demonstration && group.demo_note ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные результаты' },
           h('h2', null, 'Демо-результаты'), h('p', null, group.demo_note)) : null,
@@ -336,6 +347,123 @@ window.TrainerGroups = (() => {
         group.joined && !group.is_leader ? h('details', { class: 'groups-leave' }, h('summary', null, 'Участие в группе'), h('p', { class: 'small soft' }, 'Вы сможете снова вступить по приглашению. Ваши личные занятия останутся в истории.'),
           h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: leaveGroup }, pending ? 'Выхожу…' : leaveArmed ? 'Подтвердить выход' : 'Выйти из группы')) : null,
       ];
+    }
+    async function loadAvatar(preserveDraft = false) {
+      const previous = avatarDraft;
+      try {
+        const fresh = await api(avatarEndpoint());
+        if (!alive()) return;
+        avatarData = fresh;
+        avatarDraft = preserveDraft && (previous === null || heroAvailable(avatarChoices().find((item) => item.id === previous))) ? previous : savedHero();
+        avatarError = '';
+        return true;
+      } catch (caught) {
+        if (alive()) avatarError = caught.message || 'Не удалось загрузить героев. Попробуйте ещё раз.';
+        return false;
+      }
+    }
+    function paintAvatarSelection() {
+      refresh.disabled = loading || pending || avatarBusy;
+      const choices = avatarChoices(), selected = choices.find((item) => item.id === avatarDraft);
+      const self = list(data && data.leaderboard).find((person) => person.is_self) || { id: avatarData && avatarData.user_id, name: app.state && app.state.name };
+      if (avatarPreview) avatarPreview.replaceChildren(avatar({ ...self, avatar_character: avatarDraft }, 'groups-hero-avatar'));
+      if (avatarPreviewLabel) avatarPreviewLabel.textContent = selected ? selected.name : 'Личное фото';
+      for (const control of avatarControls) {
+        const checked = control.id === avatarDraft;
+        const available = control.id === null || heroAvailable(choices.find((item) => item.id === control.id));
+        control.input.checked = checked;
+        control.input.disabled = avatarBusy || !available;
+        control.label.classList.toggle('is-selected', checked);
+        control.label.classList.toggle('is-unavailable', !available);
+        control.marker.textContent = checked ? '✓ Выбрано' : '';
+      }
+      if (avatarSave) {
+        avatarSave.disabled = avatarBusy || avatarDraft === savedHero() || avatarDraft !== null && !heroAvailable(selected);
+        avatarSave.textContent = avatarBusy ? 'Сохраняем…' : 'Сохранить героя';
+      }
+      if (avatarStatus) {
+        avatarStatus.textContent = avatarError || avatarMessage;
+        avatarStatus.classList.toggle('is-error', Boolean(avatarError));
+      }
+    }
+    function focusAvatar(value) {
+      const input = root.querySelector(`#group-avatar-${value || 'none'}`);
+      const target = input && !input.disabled ? input : root.querySelector('#group-avatar-status');
+      if (target && target.focus) target.focus({ preventScroll: true });
+    }
+    function groupAvatarPanel(group) {
+      avatarControls = [];
+      if (!avatarData) return h('article', { class: 'card groups-hero-panel' }, h('h2', null, 'Ваш герой в этой группе'),
+        avatarError ? h('p', { class: 'groups-error', role: 'alert' }, avatarError) : h('p', { class: 'small soft', role: 'status' }, 'Загружаю героев…'),
+        h('button', { class: 'btn ghost', type: 'button', disabled: loading || avatarBusy, onclick: async () => {
+          if (avatarBusy) return;
+          avatarBusy = true; draw(); await loadAvatar(); avatarBusy = false; if (alive()) draw();
+        } }, 'Повторить загрузку героев'));
+      const choices = avatarChoices();
+      const selected = choices.find((item) => item.id === savedHero());
+      const self = list(group.leaderboard).find((person) => person.is_self) || { id: avatarData.user_id, name: app.state && app.state.name };
+      avatarPreview = h('div', { class: 'groups-hero-preview-image' });
+      avatarPreviewLabel = h('strong', { class: 'groups-hero-preview-name' });
+      avatarStatus = h('p', { id: 'group-avatar-status', class: 'profile-save-status', role: 'status', 'aria-live': 'polite', tabindex: '-1' });
+      avatarSave = h('button', { class: 'btn profile-save', type: 'submit', id: 'group-avatar-save' }, 'Сохранить героя');
+      function option(id, name, person, hint, available = true) {
+        const input = h('input', { type: 'radio', id: `group-avatar-${id || 'none'}`, name: 'group-avatar-choice', value: id || 'none', checked: id === avatarDraft, disabled: avatarBusy || !available });
+        const marker = h('span', { class: 'profile-choice-marker', 'aria-hidden': 'true' });
+        const label = h('label', { class: `profile-choice${id ? '' : ' profile-choice-telegram'}${available ? '' : ' is-unavailable'}` }, input,
+          avatar(person, 'profile-choice-avatar'), h('span', { class: 'profile-choice-copy' }, h('span', { class: 'profile-choice-name' }, name),
+            hint ? h('span', { class: 'profile-choice-hint' }, hint) : null), marker);
+        avatarControls.push({ id, input, label, marker });
+        input.addEventListener('change', () => {
+          if (avatarBusy || input.disabled || !input.checked) return;
+          avatarOpen = true; avatarDraft = id; avatarMessage = ''; avatarError = ''; paintAvatarSelection();
+        });
+        return label;
+      }
+      const form = h('form', { class: 'profile-form groups-hero-form', onsubmit: saveAvatar },
+        h('div', { class: 'groups-hero-preview' }, avatarPreview,
+          h('div', null, h('p', { class: 'small soft' }, 'Предпросмотр'), avatarPreviewLabel)),
+        h('fieldset', { class: 'profile-options' }, h('legend', null, 'Выберите героя'),
+          option(null, 'Без героя', { ...self, avatar_character: null }, 'Показывать личное фото'),
+          h('p', { class: 'small soft profile-gallery-note' }, 'У каждого участника свой персонаж. Занятые герои отмечены ниже.'),
+          h('div', { class: 'profile-character-grid' }, choices.map((item) => option(item.id, item.name, { ...self, avatar_character: item.id },
+            heroAvailable(item) ? (item.id === savedHero() ? 'Сейчас ваш герой' : '') : `Занят: ${nameOf(item.taken_by)}`, heroAvailable(item))))),
+        h('div', { class: 'profile-save-row' }, avatarSave, avatarStatus),
+        h('p', { class: 'small soft profile-footnote' }, h('a', { href: 'characters/credits.html', target: '_blank', rel: 'noopener' }, 'Источники изображений')));
+      const details = h('details', { class: 'groups-hero-picker', open: avatarOpen, ontoggle: () => { avatarOpen = details.open; } },
+        h('summary', null, selected ? 'Сменить героя' : 'Выбрать героя'), form);
+      const panel = h('article', { class: 'card groups-hero-panel', 'aria-label': 'Ваш герой в этой группе' },
+        h('div', { class: 'groups-hero-current' }, avatar({ ...self, avatar_character: savedHero() }, 'groups-hero-avatar'),
+          h('div', null, h('h2', null, 'Ваш герой в этой группе'), h('p', { class: 'groups-hero-current-name' }, selected ? selected.name : 'Вы ещё не выбрали героя'))),
+        h('p', { class: 'small soft' }, 'Этот персонаж виден в рейтинге и поединках группы «', group.name, '». В других группах вы можете выбрать другого героя. Личное фото в тренировках останется прежним.'),
+        details);
+      paintAvatarSelection();
+      return panel;
+    }
+    async function saveAvatar(event) {
+      event.preventDefault();
+      const choices = avatarChoices(), chosen = choices.find((item) => item.id === avatarDraft);
+      if (avatarBusy || avatarDraft === savedHero() || avatarDraft !== null && !heroAvailable(chosen)) return;
+      const candidate = avatarDraft;
+      avatarOpen = true; avatarBusy = true; avatarError = ''; avatarMessage = ''; paintAvatarSelection();
+      try {
+        const saved = await api(avatarEndpoint(), { method: 'POST', body: { character_id: candidate } });
+        if (!alive()) return;
+        avatarData = saved; avatarDraft = savedHero();
+        avatarMessage = candidate ? 'Герой сохранён для этой группы.' : 'Теперь в этой группе показываем личное фото.';
+        // Рейтинг, награды и превью берём из того же группового профиля.
+        try { data = await api(`${groupPath(gid)}${weekQuery ? `?week=${enc(weekQuery)}` : ''}`); }
+        catch (_) { avatarError = 'Герой сохранён. Не удалось обновить таблицу; нажмите «Обновить».'; }
+      } catch (caught) {
+        if (!alive()) return;
+        if (caught.status === 409) {
+          const refreshed = await loadAvatar(true);
+          avatarError = refreshed ? 'Этого героя уже выбрал другой участник. Список обновлён: выберите свободного персонажа.'
+            : 'Этот герой уже занят. Не удалось обновить список; нажмите «Обновить» и выберите другого персонажа.';
+        } else avatarError = `${caught.message || 'Не удалось сохранить героя.'} Выбор остался здесь, попробуйте ещё раз.`;
+      } finally {
+        avatarBusy = false;
+        if (alive()) { draw(); focusAvatar(avatarDraft); }
+      }
     }
     function peoplePanel() {
       const input = h('input', { id: 'groups-find-person', class: 'groups-input', type: 'search', value: peopleQuery,

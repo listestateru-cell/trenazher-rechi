@@ -162,7 +162,9 @@ async function api(path, opts = {}) {
   const drafts = window.TrainerDrafts;
   const requestProfile = drafts && drafts.profile();
   let operation, savedAudio;
-  if (!['GET', 'HEAD'].includes(init.method) && drafts) {
+  if (!['GET', 'HEAD'].includes(init.method) && opts.photo) {
+    init.headers['X-Request-ID'] = opts.requestId || crypto.randomUUID();
+  } else if (!['GET', 'HEAD'].includes(init.method) && drafts) {
     operation = await drafts.operation(init.method, path, init.body, init.headers);
     if (drafts.profile() !== requestProfile) throw new Error('Профиль изменился. Откройте нужное занятие заново.');
     init.headers['X-Request-ID'] = opts.requestId || operation.requestId;
@@ -187,7 +189,8 @@ async function api(path, opts = {}) {
     const read = ['GET', 'HEAD'].includes(init.method);
     const message = read
       ? (e.name === 'TrainerRequestTimeoutError' ? 'Сервер долго не отвечает. Попробуйте ещё раз.' : 'Сейчас нет связи с сервером. Попробуйте ещё раз после подключения.')
-      : (opts.blob ? 'Нет подтверждения отправки. Запись сохранена; проверьте связь и повторите отправку.' : 'Нет подтверждения отправки. Проверьте связь и состояние занятия перед повтором.');
+      : (opts.photo ? 'Не удалось подтвердить загрузку фотографии. Проверьте связь и попробуйте ещё раз.'
+        : opts.blob ? 'Нет подтверждения отправки. Запись сохранена; проверьте связь и повторите отправку.' : 'Нет подтверждения отправки. Проверьте связь и состояние занятия перед повтором.');
     const error = new Error(message);
     error.name = e.name || 'TrainerTransportError';
     error.cause = e;
@@ -2890,7 +2893,7 @@ async function openSettings() {
     h('div', { class: 'row' }, h('h2', { id: 'settings-title' }, 'Настройки'), h('span', { class: 'spacer' }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Закрыть', onclick: () => dlg.close() }, '✕')),
     h('div', { class: 'field' }, h('div', { class: 'label' }, 'Мой профиль'),
-      h('a', { class: 'btn ghost', href: '#/profile', onclick: () => dlg.close() }, 'Фото Telegram или герой')),
+      h('a', { class: 'btn ghost', href: '#/profile', onclick: () => dlg.close() }, 'Личная фотография')),
     coachField,
     h('div', { class: 'field' }, h('div', { class: 'label' }, 'Совместные тренировки'),
       h('a', { class: 'btn ghost', href: '#/groups', onclick: () => dlg.close() }, 'Группы и приглашения')),

@@ -36,7 +36,7 @@
 .groups-card-standings { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .groups-card-standings li { display: grid; grid-template-columns: 22px 32px minmax(0,1fr) auto; align-items: center; gap: 10px; min-width: 0; min-height: 34px; }
 .groups-card-place { color: var(--ink-2); font-size: 14px; text-align: center; }
-.groups-card-avatar { width: 32px; height: 32px; font-size: 14px; border-radius: 50%; }
+.profile-avatar.groups-card-avatar { width: 32px; height: 32px; font-size: 14px; border-radius: 50%; }
 .groups-card-person { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 15px; line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
 .groups-card-person-self { color: var(--ink-2); font-weight: 400; white-space: nowrap; }
 .groups-card-preview-demo { font-size: 11px; line-height: 1.4; font-weight: 400; color: var(--ink-2); }
@@ -250,4 +250,37 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .groups-view *, .groups-view *::before, .groups-view *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+
+.groups-hero-panel { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.groups-hero-current { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.groups-hero-current > div { min-width: 0; }
+.groups-hero-current h2 { font-size: 20px; line-height: 1.35; }
+.groups-hero-current-name { margin-top: 4px; color: var(--ink-2); }
+.profile-avatar.groups-hero-avatar { width: 64px; height: 64px; font-size: 27px; }
+.groups-hero-picker { border-top: 1px solid var(--line); padding-top: 8px; }
+.groups-hero-picker > summary { display: list-item; width: fit-content; min-height: 44px; padding: 12px 4px; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+.groups-hero-picker > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.groups-hero-form { margin-top: 16px; }
+.groups-hero-preview { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.groups-hero-preview-image { display: flex; }
+.groups-hero-preview-name { display: block; margin-top: 4px; font-size: 18px; }
+.groups-hero-panel .profile-choice-hint { font-size: 13px; }
+.groups-hero-panel #group-avatar-status:focus { outline: 2px solid var(--accent); outline-offset: 4px; }
+.groups-hero-panel .profile-save-row { margin-bottom: 16px; }
+.duels-view .duel-match-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.duels-view .duel-match-person { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.duels-view .duel-match-person > span:last-child { overflow-wrap: anywhere; }
+.duels-view .duel-person-avatar { width: 36px; height: 36px; font-size: 16px; }
+.duels-view .duel-bracket-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.duels-view .duel-ranking-identity { display: flex; align-items: center; gap: 10px; }
+.duels-view .duel-ranking-identity > span:last-child { min-width: 0; }
+.duels-view .duel-podium-identity { display: flex; align-items: center; gap: 10px; }
+@media (max-width: 767px) {
+  .groups-hero-current { gap: 12px; }
+  .groups-hero-current h2 { font-size: 18px; }
+  .groups-hero-panel .profile-character-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 359px) {
+  .groups-hero-panel .profile-character-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

@@ -53,7 +53,6 @@
 .profile-save-status.is-error { color: var(--bad-ink); }
 .profile-save-status:empty { display: none; }
 .profile-footnote { margin-top: 22px; font-size: 14px; }
-.profile-form:has(.profile-save:disabled) .profile-choice input:disabled { cursor: wait; }
 @media (max-width: 767px) {
   .profile-invitation { flex-wrap: wrap; gap: 12px; }
   .profile-invitation > div { min-width: 200px; }
@@ -78,4 +77,27 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .profile-choice { transition: none; }
+}
+
+/* Личное фото и персонажи групп меняются в разных местах. */
+.profile-photo-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+.profile-photo-label { font-size: 20px; font-weight: 650; }
+.profile-photo-file { display: block; width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; }
+.profile-photo-file::file-selector-button { min-height: 44px; margin-right: 12px; padding: 8px 14px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface-2); color: var(--ink); font: inherit; cursor: pointer; }
+.profile-photo-file:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.profile-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.profile-photo-remove { min-height: 48px; }
+.profile-group-heroes { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.profile-group-heroes h2 { font-size: 21px; }
+.profile-group-heroes p { max-width: 64ch; }
+.profile-group-heroes .btn { min-height: 44px; }
+.profile-group-heroes .btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.profile-choice.is-unavailable { cursor: not-allowed; border-style: dashed; background: var(--surface-2); box-shadow: none; }
+.profile-choice.is-unavailable:hover { background: var(--surface-2); }
+.profile-choice.is-unavailable .profile-avatar { opacity: .5; }
+.profile-choice.is-unavailable .profile-choice-hint { color: var(--ink-2); }
+.profile-choice.is-unavailable input:disabled { cursor: not-allowed; }
+@media (max-width: 767px) {
+  .profile-photo-actions { flex-direction: column; align-items: stretch; }
+  .profile-photo-actions > .btn { width: 100%; }
 }

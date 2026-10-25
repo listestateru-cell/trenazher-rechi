@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="connection.css">
   <link rel="stylesheet" href="mobile.css">
+  <link rel="stylesheet" href="admin.css">
   <script>
     // Тема ставится до отрисовки, чтобы не мигало.
     try { const t = localStorage.getItem('tr.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -33,6 +34,10 @@
         <a href="#/history" data-nav="history">История</a>
         <a href="#/progress" data-nav="progress">Прогресс</a>
       </nav>
+      <a class="icon-btn admin-launch" id="admin-link" href="#/admin" aria-label="Пользователи — раздел администратора" title="Пользователи" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7.5" r="3"/><path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2M16 4.8a3 3 0 0 1 0 5.8M17 13a5 5 0 0 1 3.5 4.8V20"/></svg>
+        <span>Пользователи</span>
+      </a>
       <button class="icon-btn" id="settings-btn" type="button" aria-label="Настройки" title="Настройки">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"/><path d="M19.4 13.5c.04-.5.04-1 0-1.5l1.9-1.5-1.8-3.1-2.3.8a7.4 7.4 0 0 0-1.3-.8L15.5 5h-3.6l-.4 2.4c-.46.2-.9.47-1.3.78l-2.3-.78-1.8 3.1 1.9 1.5c-.05.5-.05 1 0 1.5l-1.9 1.5 1.8 3.1 2.3-.8c.4.31.84.58 1.3.8l.4 2.4h3.6l.4-2.4c.47-.2.9-.47 1.3-.78l2.3.78 1.8-3.1-1.9-1.5Z"/></svg>
       </button>
@@ -48,6 +53,7 @@
   <script src="mobile.js"></script>
   <script src="learning-guide-content.js"></script>
   <script src="learning-guide.js"></script>
+  <script src="admin.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

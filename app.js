@@ -261,7 +261,10 @@ window.addEventListener('trainer:backendchange', () => {
     const state = previous || { time: audio.currentTime, speed: audio.playbackRate };
     reconnectPlayback.set(audio, state);
     audio.pause();
-    audio.src = url(address.pathname.slice(at) + address.search);
+    const adminPath = audio.dataset.trainerAdminMedia;
+    const mediaPath = /^\/api\/admin\/users\/\d{1,20}\/sessions\/[A-Za-z0-9-]+\/media\/[A-Za-z0-9._-]+$/.test(adminPath || '')
+      ? adminPath : address.pathname.slice(at) + address.search;
+    audio.src = url(mediaPath);
     audio.onloadedmetadata = () => {
       if (reconnectPlayback.get(audio) !== state) return;
       audio.currentTime = Math.min(state.time, Number.isFinite(audio.duration) ? audio.duration : state.time);
@@ -484,6 +487,12 @@ async function route() {
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(qs || '');
   const key = parts[0] || 'home';
+  const adminEntry = $('#admin-link');
+  if (adminEntry) {
+    adminEntry.classList.toggle('active', key === 'admin');
+    if (key === 'admin') adminEntry.setAttribute('aria-current', 'page');
+    else adminEntry.removeAttribute('aria-current');
+  }
   const navKey = { ex: 'home', s: 'home', learn: 'home' }[key] || key;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   const root = $('#app');
@@ -491,7 +500,8 @@ async function route() {
   const ctx = { alive: () => token === routeToken, root };
   try {
     let view;
-    if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
+    if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
+    else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);
     else if (key === 'program') view = await ProgramView(ctx);
@@ -2777,6 +2787,8 @@ async function openSettings() {
     h('div', { class: 'row' }, h('h2', { id: 'settings-title' }, 'Настройки'), h('span', { class: 'spacer' }),
       h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Закрыть', onclick: () => dlg.close() }, '✕')),
     coachField,
+    state && state.is_owner === true ? h('div', { class: 'field' }, h('div', { class: 'label' }, 'Администрирование'),
+      h('a', { class: 'btn ghost', href: '#/admin', onclick: () => dlg.close() }, 'Пользователи и их занятия')) : null,
     h('div', { class: 'field' }, h('label', null, 'Микрофон'), micSel,
       h('div', { class: 'row' }, testBtn, h('div', { class: 'mic-test', style: 'flex:1' }, bar)),
       h('div', { class: 'help' }, 'Шумоподавление и автогромкость выключены специально: они съедают тихое «м-м» и искажают паузы.')),
@@ -2785,7 +2797,7 @@ async function openSettings() {
     h('div', { class: 'field' }, h('div', { class: 'label' }, `Уровень вопросов тренера: ${lvl} из 5`), h('div', { class: 'row' }, resetLvl)),
     h('div', { class: 'help' }, isOwner
       ? 'Записи и разборы хранятся на этом компьютере, в папке data рядом с тренажёром. Распознавание локальное. Тренеру отправляются только текст расшифровки и замеры: обычно в Claude, при его ошибке в Codex. Звук им не передаётся.'
-      : 'Записи хранятся на компьютере владельца тренажёра, в веб-версии и в боте их видите только вы. Распознавание локальное. Тренеру отправляются только текст расшифровки и замеры: обычно в Claude, при его ошибке в Codex. Звук им не передаётся.')));
+      : 'Записи хранятся на компьютере владельца тренажёра. Они доступны вам и владельцу; другие участники их не видят. Распознавание локальное. Тренеру отправляются только текст расшифровки и замеры: обычно в Claude, при его ошибке в Codex. Звук им не передаётся.')));
   if (!dlg.open) dlg.showModal();
   fillMics();
 }
@@ -2805,7 +2817,9 @@ async function boot() {
   if ((!location.hash || location.hash === '#/') && /^#\/(s|ex|learn|program|progress|history)(\/|$)/.test(savedRoute)) history.replaceState(null, '', savedRoute);
   $('#settings-btn').addEventListener('click', openSettings);
   try {
-    app.catalog = await api('/api/catalog');
+    [app.catalog, app.state] = await Promise.all([api('/api/catalog'), api('/api/state')]);
+    const adminEntry = $('#admin-link');
+    if (adminEntry) adminEntry.hidden = app.state.is_owner !== true;
   } catch (e) {
     $('#app').replaceChildren(errorBlock(e));
     return;

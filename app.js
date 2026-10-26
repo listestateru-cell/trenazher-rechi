@@ -2377,8 +2377,8 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
       h('div', { class: 'label' }, 'Как сказать сильнее', h('span', { class: 'spacer' })),
       h('p', null, rt.stronger),
       h('div', { class: 'row', style: 'margin-top:10px' }, readBtn, copyBtn),
-      explanation ? h('section', { class: 'stronger-explanation', 'aria-label': 'Что изменилось и почему' },
-        h('h3', null, 'Что изменилось и почему'), h('p', null, explanation)) : null));
+      explanation ? h('section', { class: 'stronger-explanation', 'aria-label': 'Как устроен этот ответ' },
+        h('h3', null, 'Как устроен этот ответ'), h('p', null, explanation)) : null));
   }
   return box;
 }

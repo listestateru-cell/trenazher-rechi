@@ -373,6 +373,18 @@ p { margin: 0; }
 .callout { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--surface-2); display: flex; flex-direction: column; gap: 6px; }
 .callout .label { font-size: 12.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); font-weight: 650; }
 .callout.next { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.transcript-editor { margin-top: 16px; border-top: 1px solid var(--line-2); padding-top: 12px; }
+.transcript-editor > summary { cursor: pointer; padding: 8px 0; font-weight: 560; }
+.transcript-editor[open] { display: flex; flex-direction: column; gap: 12px; }
+.transcript-editor textarea { width: 100%; min-height: 140px; font: inherit; line-height: 1.6; }
+.skill-progress { margin: 18px 0; }
+.skill-progress > p { margin-top: 10px; }
+.skill-progress-item { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line-2); }
+.skill-progress-item > p, .skill-progress-item > .row { margin-top: 12px; }
+.skill-stages { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 10px; }
+.skill-stages li { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius-sm); }
+.skill-stages li.confirmed { border-left: 3px solid var(--good-ink); }
+.thought-comparison.single { grid-template-columns: minmax(0, 1fr); }
 .callout .q { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
 
 /* ---- попытки ---- */

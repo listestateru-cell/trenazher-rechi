@@ -226,19 +226,21 @@ async function api(path, opts = {}) {
 let recoverySerial = 0;
 async function showDraftRecovery() {
   if (!window.TrainerDrafts) return;
-  const serial = ++recoverySerial;
+  const serial = ++recoverySerial, owner = TrainerDrafts.profile();
   const records = (await TrainerDrafts.list()).filter((r) => r.kind === 'audio');
-  if (serial !== recoverySerial) return;
+  const incomplete = TrainerDrafts.recordings ? await TrainerDrafts.recordings() : [];
+  if (serial !== recoverySerial || owner !== TrainerDrafts.profile()) return;
   let box = $('#trainer-recovery');
   if (!box) { box = h('section', { id: 'trainer-recovery', class: 'trainer-recovery page', 'aria-label': 'Неотправленные записи' }); $('#app').before(box); }
   box.querySelectorAll('audio').forEach((a) => { a.pause(); if (a.dataset.blobUrl) URL.revokeObjectURL(a.dataset.blobUrl); });
-  box.replaceChildren(); box.hidden = !records.length;
+  box.replaceChildren(); box.hidden = !records.length && !incomplete.length;
   records.forEach((record) => {
     const audioUrl = URL.createObjectURL(record.blob);
     const player = h('audio', { controls: true, preload: 'metadata', src: audioUrl, 'aria-label': 'Неотправленная запись' });
     player.dataset.blobUrl = audioUrl;
     const note = h('p', { class: 'small soft', role: 'status' }, record.durable ? 'Запись сохранена на этом устройстве. Она пока не отправлена либо ожидает подтверждения.' : 'Запись есть только в открытой странице. Браузер не разрешил сохранить её надолго.');
-    const retry = h('button', { class: 'btn', type: 'button', onclick: async () => {
+    const retry = h('button', { class: 'btn', type: 'button', disabled: record.blob.size < 1200, onclick: async () => {
+      if (record.blob.size < 1200 || owner !== TrainerDrafts.profile()) return;
       retry.disabled = true; note.textContent = 'Проверяю отправку…';
       try {
         await api(record.path, { method: 'PUT', blob: record.blob, headers: record.headers, requestId: record.requestId });
@@ -249,8 +251,44 @@ async function showDraftRecovery() {
     const download = h('a', { class: 'btn ghost', href: audioUrl, download: 'речь-' + record.updated + (record.blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать');
     box.append(h('div', { class: 'card' }, h('h2', null, record.label || 'Неотправленная запись'), note, player,
       h('div', { class: 'row' }, retry, download,
-        confirmButton('Убрать копию с устройства', 'Убрать эту копию?', () => TrainerDrafts.remove(record.id, record.requestId)))));
+        confirmButton('Убрать копию с устройства', 'Убрать эту копию?', () => TrainerDrafts.remove(record.id, record.requestId, record.profile)))));
   });
+  incomplete.forEach((record) => {
+    const route = `#/s/${encodeURIComponent(record.sessionId)}${record.thoughtId ? '?thought=' + encodeURIComponent(record.thoughtId) : ''}`;
+    box.append(h('div', { class: 'card' }, h('h2', null, 'Сохранилась незавершённая запись'),
+      h('p', { class: 'small soft' }, 'На устройстве остались подтверждённые части записи. Конец мог потеряться; воспроизведение фрагмента нужно проверить.',
+        record.mayBeActive ? ' Эта запись также может продолжаться в другой вкладке.' : ''),
+      h('a', { class: 'btn ghost', href: route }, 'Открыть восстановление')));
+  });
+}
+
+function recoveredRecordingControls(pending, actions) {
+  const player = h('audio', { controls: true, preload: 'metadata', src: pending.downloadUrl,
+    style: 'width:100%', 'aria-label': 'Восстановленная незавершённая запись' });
+  const note = h('p', { class: 'small soft', role: 'status', 'aria-live': 'polite' });
+  const send = h('button', { class: 'btn', type: 'button', onclick: actions.send }, 'Отправить фрагмент');
+  const again = h('button', { class: 'btn ghost', type: 'button', onclick: actions.recordAgain }, 'Записать заново');
+  const discard = confirmButton('Убрать фрагмент', 'Убрать эту копию?', actions.discard);
+  function update() {
+    send.disabled = pending.sending || pending.blob.size < 1200 || pending.playback !== 'ready';
+    again.disabled = discard.disabled = pending.sending;
+    note.textContent = pending.blob.size < 1200
+      ? 'Сохранившийся фрагмент слишком короткий для отправки. Его можно скачать или записать ответ заново.'
+      : pending.playback === 'failed'
+        ? 'Браузер не смог воспроизвести незавершённый аудиофайл. Можно скачать копию или записать ответ заново.'
+        : pending.playback === 'ready'
+          ? 'Фрагмент воспроизводится. Конец записи мог потеряться: прослушайте его перед отправкой.'
+          : 'Проверьте воспроизведение. Браузер мог не завершить аудиофайл; до проверки отправка недоступна.';
+  }
+  player.addEventListener('canplay', () => { pending.playback = 'ready'; update(); });
+  player.addEventListener('error', () => { pending.playback = 'failed'; update(); });
+  const el = h('div', { class: 'stack' }, note, player,
+    h('div', { class: 'row' }, send,
+      h('a', { class: 'btn ghost', href: pending.downloadUrl,
+        download: 'незавершённая-речь-' + (pending.idx + 1) + (pending.blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать фрагмент'), again, discard),
+    h('p', { class: 'small soft' }, 'Кнопка «Записать заново» оставит этот фрагмент на устройстве.'));
+  update();
+  return { el, update, pause: () => player.pause() };
 }
 window.addEventListener('trainer:draftschange', showDraftRecovery);
 const reconnectPlayback = new WeakMap();
@@ -412,24 +450,67 @@ function pickMime() {
   return '';
 }
 class Recorder {
-  constructor(stream) {
+  constructor(stream, options = {}) {
     const mime = pickMime();
     if (mime === null) throw new Error('Этот браузер не умеет записывать звук. Откройте тренажёр в Chrome или Safari.');
     this.chunks = [];
+    this.options = options;
+    this.journal = null;
+    this.savedDraft = null;
+    this.discarded = false;
     this.mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 96000 } : undefined);
-    this.mr.ondataavailable = (e) => { if (e.data && e.data.size) this.chunks.push(e.data); };
+    this.mr.ondataavailable = (e) => {
+      if (!e.data || !e.data.size) return;
+      this.chunks.push(e.data);
+      if (this.journal && !this.discarded) {
+        try { Promise.resolve(this.journal.append(e.data)).catch(() => this.backupFailed()); } catch (_) { this.backupFailed(); }
+      }
+    };
   }
-  start() { this.mr.start(250); this.t0 = performance.now(); }
+  backupFailed() {
+    try {
+      if (this.options.journal && this.options.journal.onStatus) this.options.journal.onStatus({ durable: false,
+        notice: 'Не удалось сохранить резервную копию на устройстве. Текущая запись продолжается; не закрывайте страницу до отправки.' });
+    } catch (_) {}
+  }
+  start() {
+    this.mr.start(250); this.t0 = performance.now();
+    if (this.options.journal && window.TrainerDrafts && TrainerDrafts.beginRecording) {
+      try { this.journal = TrainerDrafts.beginRecording({ ...this.options.journal, mimeType: this.mr.mimeType }); }
+      catch (_) { this.backupFailed(); }
+    }
+  }
   get elapsed() { return (performance.now() - this.t0) / 1000; }
-  stop() {
-    return new Promise((res) => {
-      const done = () => res(new Blob(this.chunks, { type: (this.mr.mimeType || 'audio/webm').split(';')[0] }));
+  stop(extra = {}) {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = new Promise((res) => {
+      const done = async () => {
+        const blob = new Blob(this.chunks, { type: (this.mr.mimeType || 'audio/webm').split(';')[0] });
+        if (this.journal && !this.discarded) {
+          try { this.savedDraft = await this.journal.finish(blob, extra); } catch (_) { this.backupFailed(); }
+        }
+        res(blob);
+      };
       if (this.mr.state === 'inactive') return done();
       this.mr.onstop = done;
       this.mr.stop();
     });
+    return this.stopPromise;
   }
-  cancel() { try { if (this.mr.state !== 'inactive') this.mr.stop(); } catch (e) { /* уже стоит */ } }
+  cancel({ preserve = false } = {}) {
+    this.discarded = !preserve;
+    let sealed, seal;
+    if (preserve && this.journal && !this.stopPromise) {
+      sealed = new Promise((resolve) => {
+        seal = () => Promise.resolve(this.journal.seal()).then(resolve, resolve);
+        if (this.mr.state === 'inactive') seal();
+        else this.mr.onstop = seal;
+      });
+    }
+    try { if (this.mr.state !== 'inactive') this.mr.stop(); } catch (e) { if (seal) seal(); }
+    if (!preserve && this.journal) return this.journal.discard();
+    return sealed;
+  }
 }
 
 /* Бегущая полоска громкости: видно, что тренер вас «слышит». */
@@ -1123,14 +1204,23 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       center.append(stopBtn);
       stageTitle.append(v.timeEl);
       stageSub.textContent = lim ? 'секунд осталось · пробел — закончить раньше' : 'идёт запись · пробел — закончить';
+      if (v.backupWarning) stageActions.append(h('p', { class: 'small soft', role: 'status' }, v.backupWarning));
       return;
     }
     if (v.pendingTake) {
       const pending = v.pendingTake;
       setRing(0);
       center.append(pending.sending ? h('div', { class: 'spinner' }) : icon('upload', 'big-ico'));
-      stageTitle.textContent = pending.sending ? 'Отправляю запись…' : 'Запись ждёт отправки';
+      stageTitle.textContent = pending.sending ? 'Отправляю запись…' : pending.incomplete ? 'Восстановлена незавершённая запись' : 'Запись ждёт отправки';
       stageSub.textContent = pending.sending ? 'Сохраняю эту попытку. Повторно записывать её не нужно.' : (pending.error || 'Подтверждение ещё не получено. Можно повторить отправку этой записи.');
+      if (pending.incomplete) {
+        if (!pending.recoveryControls) pending.recoveryControls = recoveredRecordingControls(pending, {
+          send: retryPendingTake, recordAgain: () => releaseRecoveredTake(pending, true), discard: () => discardRecoveredTake(pending),
+        });
+        pending.recoveryControls.update();
+        stageActions.append(pending.recoveryControls.el);
+        return;
+      }
       stageActions.append(
         h('button', { class: 'btn', type: 'button', disabled: pending.sending, onclick: retryPendingTake }, pending.sending ? 'Отправляю…' : 'Повторить отправку'),
         h('a', { class: 'btn ghost', href: pending.downloadUrl, download: 'речь-' + (pending.idx + 1) + (pending.blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать запись'));
@@ -1276,7 +1366,16 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     try {
       v.recordingContext = window.TrainerDrafts && TrainerDrafts.context();
       v.recordingStream = mic.stream;
-      v.rec = new Recorder(mic.stream);
+      v.backupWarning = '';
+      v.rec = new Recorder(mic.stream, { journal: {
+        path: `/api/sessions/${v.session.id}/takes/${v.recIndex}`, userId: app.state && app.state.user_id,
+        context: v.recordingContext, onStatus: (status) => {
+          if (!status.durable && status.notice && !v.destroyed && status.notice !== v.backupWarning) {
+            v.backupWarning = status.notice;
+            if (v.stage === 'rec') renderStage();
+          }
+        },
+      } });
       v.rec.start();
     } catch (e) {
       v.stage = 'error';
@@ -1316,37 +1415,52 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     cancelAnimationFrame(v.raf);
     meter.stop();
     renderStage();
-    const blob = await v.rec.stop();
-    v.rec = null;
+    const recorder = v.rec, index = v.recIndex;
+    const blob = await recorder.stop();
+    if (v.rec === recorder) v.rec = null;
     if (mic.stream === v.recordingStream) mic.close();
     const context = v.recordingContext;
     if (context && window.TrainerDrafts && (v.destroyed || context.profile !== TrainerDrafts.profile())) {
-      await TrainerDrafts.audio(`/api/sessions/${v.session.id}/takes/${v.recIndex}`, blob, {}, undefined, context);
+      if (!recorder.savedDraft) await TrainerDrafts.audio(`/api/sessions/${v.session.id}/takes/${index}`, blob, {}, undefined, context);
       return;
     }
     sound.beep(660, 0.09).then(() => sound.beep(495, 0.16));
-    await sendTake(v.recIndex, blob, '');
+    await sendTake(index, blob, '', recorder.savedDraft);
   }
 
-  async function sendTake(idx, blob, name) {
+  async function sendTake(idx, blob, name, savedDraft = null) {
     if (v.pendingTake && (v.pendingTake.sending || v.pendingTake.blob !== blob || v.pendingTake.idx !== idx)) return;
     let pending = v.pendingTake;
     let failed = false;
     try {
       if (blob.size < 1200) throw new Error('Запись получилась пустой — проверьте микрофон в настройках.');
       if (!pending) {
-        pending = v.pendingTake = { idx, blob, name, requestId: null, sending: false, error: '',
-          profile: window.TrainerDrafts && TrainerDrafts.profile(), downloadUrl: URL.createObjectURL(blob), lastReconcile: 0 };
+        pending = v.pendingTake = { idx, blob, name, requestId: savedDraft && savedDraft.requestId || null, sending: false, error: '',
+          profile: savedDraft && savedDraft.profile || window.TrainerDrafts && TrainerDrafts.profile(), headers: savedDraft && savedDraft.headers || {}, downloadUrl: URL.createObjectURL(blob), lastReconcile: 0 };
       }
       if (window.TrainerDrafts && pending.profile !== TrainerDrafts.profile()) throw new Error('Профиль изменился. Откройте нужное занятие заново.');
       pending.sending = true;
       v.stage = 'upload';
       renderStage();
       const q = name ? `?name=${encodeURIComponent(name)}` : '';
-      const fresh = await api(`/api/sessions/${v.session.id}/takes/${idx}${q}`, { method: 'PUT', blob,
+      const path = `/api/sessions/${v.session.id}/takes/${idx}${q}`;
+      if (pending.incomplete && !pending.requestId && window.TrainerDrafts && TrainerDrafts.operation) {
+        // У фрагмента другое тело, поэтому он не использует ID исходной полной записи.
+        const claim = await TrainerDrafts.operation('PUT', path, blob,
+          { ...(pending.headers || {}), 'X-Trainer': '1', 'Content-Type': blob.type || 'application/octet-stream' });
+        const prepared = TrainerDrafts.prepareRecovery ? await TrainerDrafts.prepareRecovery(pending.recordingId, pending.recordingRequestId, claim, pending.headers || {}, pending.profile) : claim;
+        pending.requestId = prepared.requestId;
+      }
+      const fresh = await api(path, { method: 'PUT', blob, headers: pending.headers || {},
         requestId: pending.requestId || undefined, onRequestId: (id) => { pending.requestId = id; } });
+      if (pending.incomplete && pending.recordingId && window.TrainerDrafts && TrainerDrafts.removeRecording) {
+        await TrainerDrafts.removeRecording(pending.recordingId, pending.recordingRequestId, pending.profile);
+      }
       v.session = fresh;
-      if (v.pendingTake === pending) { URL.revokeObjectURL(pending.downloadUrl); v.pendingTake = null; }
+      if (v.pendingTake === pending) {
+        if (pending.recoveryControls) pending.recoveryControls.pause();
+        URL.revokeObjectURL(pending.downloadUrl); v.pendingTake = null;
+      }
       v.forceIndex = null;
       v.waitPolls = 0;
       v.stage = nextIndex() == null ? 'complete' : 'between';
@@ -1376,23 +1490,56 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   async function restorePendingTake() {
     if (!v.session || !window.TrainerDrafts || v.pendingTake) return;
-    const prefix = `/api/sessions/${v.session.id}/takes/`;
+    const owner = TrainerDrafts.profile(), prefix = `/api/sessions/${v.session.id}/takes/`;
     const records = await TrainerDrafts.list();
-    if (v.destroyed || v.pendingTake) return;
+    if (v.destroyed || v.pendingTake || owner !== TrainerDrafts.profile()) return;
     for (const record of records) {
       if (record.kind !== 'audio' || !record.path.startsWith(prefix) || !record.blob || record.blob.size < 1200) continue;
       const match = /^(\d{1,2})(?:\?(.*))?$/.exec(record.path.slice(prefix.length));
       if (!match || !v.session.plan[Number(match[1])]) continue;
       v.pendingTake = { idx: Number(match[1]), blob: record.blob, name: new URLSearchParams(match[2] || '').get('name') || '',
-        requestId: record.requestId, profile: record.profile || TrainerDrafts.profile(), sending: false, lastReconcile: 0,
+        requestId: record.requestId, profile: record.profile || TrainerDrafts.profile(), headers: record.headers || {}, sending: false, lastReconcile: 0,
         error: 'На этом устройстве осталась запись без подтверждения. Можно повторить её отправку.', downloadUrl: URL.createObjectURL(record.blob) };
       break;
     }
+    if (v.pendingTake || !TrainerDrafts.recordings || !TrainerDrafts.recoverRecording) return;
+    const interrupted = await TrainerDrafts.recordings();
+    for (const record of interrupted.sort((a, b) => b.updated - a.updated)) {
+      if (record.sessionId !== v.session.id || record.takeIndex == null || !v.session.plan[record.takeIndex]) continue;
+      const recovered = await TrainerDrafts.recoverRecording(record.id);
+      if (v.destroyed || v.pendingTake || owner !== TrainerDrafts.profile()) return;
+      if (!recovered || !recovered.blob || !recovered.blob.size) continue;
+      v.pendingTake = { idx: record.takeIndex, blob: recovered.blob, name: '', requestId: null,
+        recordingId: record.id, recordingRequestId: record.requestId, incomplete: true, playback: 'unverified',
+        profile: record.profile || TrainerDrafts.profile(), headers: record.headers || {}, sending: false, lastReconcile: 0,
+        error: recovered.notice + (record.mayBeActive ? ' Запись также может продолжаться в другой вкладке.' : ''),
+        downloadUrl: URL.createObjectURL(recovered.blob) };
+      break;
+    }
+  }
+
+  async function releaseRecoveredTake(pending, startNew = false) {
+    if (v.pendingTake !== pending || pending.sending || v.destroyed) return;
+    if (pending.recoveryControls) pending.recoveryControls.pause();
+    URL.revokeObjectURL(pending.downloadUrl);
+    v.pendingTake = null;
+    v.forceIndex = startNew ? pending.idx : null;
+    v.stage = nextIndex() == null ? 'complete' : 'between';
+    renderStage(); renderDynamic();
+    if (startNew) await startTake();
+  }
+
+  async function discardRecoveredTake(pending) {
+    if (v.pendingTake !== pending || pending.sending || v.destroyed) return;
+    const removed = await TrainerDrafts.removeRecording(pending.recordingId, pending.recordingRequestId, pending.profile);
+    if (!removed) { pending.error = 'Не удалось убрать копию с устройства. Её можно оставить и записать ответ заново.'; renderStage(); return; }
+    await releaseRecoveredTake(pending);
   }
 
   function retryPendingTake() {
     const pending = v.pendingTake;
     if (!pending || pending.sending || v.destroyed) return;
+    if (pending.incomplete && (pending.blob.size < 1200 || pending.playback !== 'ready')) return;
     return sendTake(pending.idx, pending.blob, pending.name);
   }
 
@@ -1526,7 +1673,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const st = an ? an.status : 'none';
     const someProcessing = sess && sess.takes.some((t) => t.status === 'processing');
     const stillWaiting = st === 'waiting' && allUploaded() && (someProcessing || v.waitPolls < 12);
-    const key = [st, an && an.gen, an && !!an.result, allUploaded(), someProcessing, an && an.error, an && an.refresh_error, stillWaiting].join('|');
+    const key = [st, an && an.gen, an && !!an.result, an && !!an.transcript_stale, allUploaded(), someProcessing, an && an.error, an && an.refresh_error, stillWaiting].join('|');
     if (key === v.anKey) return;
     v.anKey = key;
     analysisBox.replaceChildren();
@@ -1544,6 +1691,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
           h('div', { class: 'small muted' }, someProcessing
             ? 'Распознаю слова и меряю паузы по звуку.'
             : 'Проверяет каждого паразита в контексте, ищет недочёты и пишет сильную версию. Обычно 15–40 секунд.'))));
+      if ((sess.analysis_history || []).length) analysisBox.append(analysisArchive(sess));
       return;
     }
     if (st === 'error') {
@@ -1561,10 +1709,23 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
     if (st !== 'done' || !an.result) return;
     analysisBox.append(resultCard(an));
+    if ((sess.analysis_history || []).length) analysisBox.append(analysisArchive(sess));
     if (!v.scrolledToResult && v.justFinished) {
       v.scrolledToResult = true;
       setTimeout(() => analysisBox.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     }
+  }
+
+  function analysisArchive(session) {
+    return h('details', { class: 'card analysis-archive' }, h('summary', null, 'Предыдущие разборы до исправления текста'),
+      h('p', { class: 'small soft' }, 'Эти отзывы относятся к прежним расшифровкам. Они не применяются к исправленным словам.'),
+      (session.analysis_history || []).map((entry) => {
+        const result = entry.result || {};
+        return h('details', { class: 'callout' }, h('summary', null, `Версия текста ${(entry.source_revision || 0) + 1} · оценка ${f1(result.overall)}`),
+          h('p', null, result.verdict),
+          (result.takes || []).map((take, index) => h('div', { class: 'callout' }, h('h4', null, `Как сказать сильнее · попытка ${((entry.takes || [])[index] ?? index) + 1}`), h('p', null, take.stronger), take.stronger_explanation ? h('p', { class: 'small soft' }, take.stronger_explanation) : null)),
+          result.tip ? h('p', { class: 'soft' }, 'Прежний совет: ', result.tip) : null);
+      }));
   }
 
   function resultCard(an) {
@@ -1579,6 +1740,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
         h('span', { class: 'chip' }, coachLabel + (meta.seconds ? ` · ${f1(meta.seconds)} с` : '')),
         h('span', { class: 'spacer' }),
         demo ? null : h('button', { class: 'btn ghost small', type: 'button', onclick: reanalyze, title: 'Попросить тренера разобрать ещё раз' }, icon('redo'), 'Разобрать заново')),
+      an.transcript_stale ? h('p', { class: 'warn-line', role: 'status' }, 'Это разбор предыдущей версии расшифровки. Исправленный текст сохранён; новый разбор ещё не готов.') : null,
       an.refresh_error ? h('div', { class: 'warn-line' },
         h('p', { role: 'status' }, 'Обновить разбор не удалось. Показываем предыдущий сохранённый разбор.'),
         h('details', { class: 'howto' }, h('summary', null, 'Подробности'), h('p', { class: 'small soft' }, an.refresh_error))) : null,
@@ -1593,7 +1755,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       r.sprint_words && r.sprint_words.length ? h('div', { class: 'callout' },
         h('div', { class: 'label' }, `Названо понятий: ${r.sprint_words.length}`),
         h('div', { class: 'word-chips' }, r.sprint_words.map((w) => h('span', { class: 'chip' }, w)))) : null,
-      r.tip ? h('div', { class: 'callout' }, h('div', { class: 'label' }, 'Совет на следующую попытку'), h('p', null, r.tip)) : null,
+      r.tip ? h('div', { class: 'callout' }, h('div', { class: 'label' }, 'Совет на следующую попытку'), h('p', null, r.tip),
+        !demo && !an.transcript_stale ? h('div', { class: 'row' }, h('button', { class: 'btn ghost', type: 'button', onclick: () => thoughts.startTip() }, 'Попробовать этот приём', icon('arrow'))) : null) : null,
       v.exId === 'coach' && r.next_question ? h('div', { class: 'callout next' },
         h('div', { class: 'label' }, 'Следующий вопрос тренера'), h('div', { class: 'q' }, r.next_question),
         h('div', { class: 'row', style: 'margin-top:6px' }, h('a', { class: 'btn', href: '#/ex/coach' }, icon('mic'), 'Ответить'))) : null);
@@ -1636,12 +1799,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const sess = v.session;
     if (!sess) return;
     const an = sess.analysis || {};
-    const res = an.status === 'done' ? an.result : null;
+    const res = an.status === 'done' && !an.transcript_stale ? an.result : null;
     sess.takes.forEach((t, i) => {
       if (t.status === 'missing') return;
       const pos = res ? (an.takes || []).indexOf(i) : -1;
       const rt = pos >= 0 ? res.takes[pos] : null;
-      const key = [t.status, t.upload_id, t.error, rt ? an.gen : 0, (t.fillers_final || []).length].join('|');
+      const key = [t.status, t.upload_id, t.transcript_revision || 0, t.error, an.status, !!an.transcript_stale, rt ? an.gen : 0, (t.fillers_final || []).length].join('|');
       const old = v.cards.get(i);
       if (old && old.key === key) return;
       const card = buildTakeCard(t, i, rt);
@@ -1692,22 +1855,67 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     let nowIdx = -1;
     function highlight(time) {
       if (!words.length) return;
-      let lo = 0, hi = words.length - 1, ans = -1;
-      while (lo <= hi) { const mid = (lo + hi) >> 1; if (words[mid].s <= time + 0.05) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
-      if (ans !== -1 && time > words[ans].e + 0.6) ans = -1;
+      let ans = -1;
+      for (let index = 0; index < words.length; index++) {
+        const word = words[index];
+        if (Number.isFinite(word.s) && Number.isFinite(word.e) && word.s <= time + 0.05 && time <= word.e + 0.6) ans = index;
+      }
       if (ans === nowIdx) return;
       if (nowIdx >= 0 && wordEls[nowIdx]) wordEls[nowIdx].classList.remove('now');
       nowIdx = ans;
       if (nowIdx >= 0 && wordEls[nowIdx]) wordEls[nowIdx].classList.add('now');
     }
     const tr = demo ? { el: h('p', { class: 'transcript' }, t.text || words.map((word) => word.t).join(' ')) }
-      : renderTranscript(t, rt, wordEls, (idx) => { if (player) player.seek(Math.max(0, words[idx].s - 0.2)); });
+      : renderTranscript(t, rt, wordEls, (idx) => { if (player && Number.isFinite(words[idx].s)) player.seek(Math.max(0, words[idx].s - 0.2)); });
     el.append(tr.el);
     if (tr.legend) el.append(tr.legend);
+    if (!demo && !v.session.group_duel) el.append(transcriptEditor(t, i));
     if (demo) el.append(h('p', { class: 'small soft' }, 'Текст для примера. Аудиозаписи нет; замеры речи не проводились.'));
     else el.append(tilesFor(t, rt));
     if (rt) el.append(takeAnalysis(rt, t, wordEls, player, demo ? null : (issueIndex) => thoughts.start(i, issueIndex)));
     return { el, destroy() { cleanup.forEach((f) => f()); } };
+  }
+
+  function transcriptEditor(take, index) {
+    const original = (take.words || []).map((word) => word.t).join(' ');
+    const details = h('details', { class: 'transcript-editor' });
+    const inputId = `transcript-edit-${v.session.id}-${index}`;
+    const input = h('textarea', { id: inputId, rows: 5, maxlength: 60000, value: original });
+    input.value = original;
+    const message = h('p', { class: 'small soft', role: 'status' });
+    const save = h('button', { class: 'btn ghost', type: 'button', onclick: async () => {
+      const text = input.value.trim();
+      if (!text || text === original || save.disabled) return;
+      save.disabled = true; input.disabled = true; message.textContent = 'Сохраняю исправление…';
+      try {
+        const fresh = await api(`/api/sessions/${v.session.id}/takes/${index}/transcript`, {
+          method: 'POST', body: { text, expected_revision: v.session.transcript_revision || 0 },
+        });
+        if (v.destroyed) return;
+        v.session = fresh; v.anKey = ''; renderDynamic(); schedulePoll();
+        toast('Исправление сохранено. Исходная запись и первая расшифровка остаются в истории.');
+      } catch (error) {
+        message.textContent = error.message + ' Ваше исправление осталось в поле.';
+        save.disabled = false; input.disabled = false;
+      }
+    } }, 'Сохранить и обновить разбор');
+    const busyNow = busy() || ['running', 'queued'].includes((v.session.analysis || {}).status) ||
+      (v.session.thoughts || []).some((p) => (p.attempts || []).some((a) => ['processing', 'reviewing'].includes(a.status)));
+    const updateSave = () => { save.disabled = busyNow || !input.value.trim() || input.value.trim() === original; };
+    input.addEventListener('input', updateSave);
+    input.disabled = busyNow;
+    updateSave();
+    details.append(...[h('summary', null, 'Исправить распознавание'),
+      h('p', { class: 'small soft' }, 'Исправьте только то, что распозналось неверно. Аудио останется прежним. Исправленные слова могут не иметь точного времени в записи.'),
+      h('label', { for: inputId }, 'Текст вашей записи'), input,
+      busyNow ? h('p', { class: 'small soft' }, 'Дождитесь завершения текущей записи или проверки, затем откройте исправление снова.') : null,
+      h('div', { class: 'row' }, save), message].filter(Boolean));
+    if (take.transcript_edited) details.append(h('p', { class: 'small soft' }, 'Вы исправили распознавание. Темп и длительности пауз измерены по исходной записи.'));
+    if (take.transcript_original) details.append(h('details', null, h('summary', null, 'Первичная расшифровка'),
+      h('p', { class: 'soft' }, (take.transcript_original.words || []).map((word) => word.t).join(' '))));
+    if ((take.transcript_history || []).length) details.append(h('details', null, h('summary', null, 'История исправлений'),
+      take.transcript_history.map((change) => h('div', { class: 'callout' }, h('p', { class: 'small soft' }, new Date(change.edited_at).toLocaleString('ru-RU')), h('p', null, change.after)))));
+    return details;
   }
 
   /* ---- после разбора ---- */
@@ -1846,7 +2054,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   renderDynamic();
   renderStage();
   schedulePoll();
-  if (params.get('thought')) setTimeout(() => { if (!v.destroyed) thoughts.focus(); }, 150);
+  if (params.get('thought')) setTimeout(() => { if (!v.destroyed) thoughts.focus(params.get('thought')); }, 150);
 
   return {
     destroy() {
@@ -1856,7 +2064,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       if (nextResize) nextResize.disconnect();
       clearTimeout(v.pollT);
       cancelAnimationFrame(v.raf);
-      if (v.rec) v.rec.cancel();
+      if (v.rec) v.rec.cancel({ preserve: true });
       thoughts.destroy();
       meter.stop();
       mic.close();
@@ -1885,30 +2093,45 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
   function renderEntry() {
     const sess = session();
     const ready = sess && (sess.takes || []).map((t, i) => ({ t, i })).filter(({ t }) => t.status === 'done' && (t.text || (t.words || []).length));
-    const available = !!(ready && ready.length && sess.analysis && sess.analysis.status === 'done' && !isDemoSession(sess));
-    const key = JSON.stringify([available, ready && ready.map(({ i, t }) => [i, t.label]), creating, createError]);
+    const available = !!(ready && ready.length && sess.analysis && sess.analysis.status === 'done' && !sess.analysis.transcript_stale && !isDemoSession(sess));
+    const tip = available && sess.analysis.result && sess.analysis.result.tip;
+    const key = JSON.stringify([available, tip, sess && sess.transcript_revision, ready && ready.map(({ i, t }) => [i, t.label]), creating, createError]);
     if (key === entryKey) return;
     entryKey = key;
     entry.replaceChildren();
     if (!available) return;
     const pick = ready.length > 1 ? h('select', { 'aria-label': 'Из какой попытки выбрать мысль', disabled: creating }, ready.map(({ i, t }) => h('option', { value: i }, t.label || `Попытка ${i + 1}`))) : null;
+    if (pick) pick.value = String(ready[ready.length - 1].i);
     entry.append(h('div', { class: 'card thought-entry' },
       h('div', null, h('h2', null, 'Потренировать эту мысль'), h('p', { class: 'soft' }, 'Выберите одну мысль из своей записи и сформулируйте её яснее. Тренер даст подсказку и сравнит вашу новую версию с исходной.')),
       h('div', { class: 'thought-entry-actions' }, pick, h('button', { class: 'btn', type: 'button', disabled: creating, onclick: () => start(pick ? Number(pick.value) : ready[0].i) }, icon('edit'), creating ? 'Выбираю фрагмент…' : 'Выбрать мысль и потренироваться')),
+      tip ? h('div', { class: 'row' }, h('button', { class: 'btn ghost', type: 'button', disabled: creating, onclick: () => startTip(pick ? Number(pick.value) : ready[0].i) }, 'Применить совет к этой попытке', icon('arrow'))) : null,
       createError ? h('p', { class: 'thought-error', role: 'alert' }, createError, ' Попробуйте ещё раз.') : null));
   }
 
-  async function start(takeIndex, issueIndex) {
+  function startTip(selectedIndex) {
+    const sess = session();
+    const metadata = sess && sess.analysis && sess.analysis.result && sess.analysis.result.tip_practice;
+    const ready = (sess && sess.takes || []).map((t, i) => ({ t, i })).filter(({ t }) => t.status === 'done' && (t.words || []).length);
+    if (!ready.length) return;
+    if (selectedIndex == null && !(metadata && Number.isInteger(metadata.take_index)) && ready.length > 1) {
+      createError = 'Выберите ниже попытку, к которой относится совет, и нажмите «Применить совет к этой попытке».';
+      renderEntry(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); return;
+    }
+    return start(selectedIndex ?? (metadata && metadata.take_index) ?? ready[0].i, null, 'tip');
+  }
+
+  async function start(takeIndex, issueIndex, practiceSource) {
     if (creating || !session() || !live()) return;
     creating = true;
     createError = '';
     renderEntry();
     const oldIds = new Set((session().thoughts || []).map((p) => p.id));
     try {
-      const fresh = await api(`/api/sessions/${session().id}/thoughts`, { method: 'POST', body: { take_index: takeIndex, issue_index: issueIndex } });
+      const fresh = await api(`/api/sessions/${session().id}/thoughts`, { method: 'POST', body: { take_index: takeIndex, issue_index: issueIndex, ...(practiceSource ? { practice_source: practiceSource } : {}) } });
       if (!live()) return;
       changed(fresh);
-      const practice = (fresh.thoughts || []).find((p) => !oldIds.has(p.id)) || (fresh.thoughts || []).find((p) => p.take_index === takeIndex && (issueIndex == null || p.issue_index === issueIndex));
+      const practice = (fresh.thoughts || []).find((p) => !oldIds.has(p.id)) || (fresh.thoughts || []).find((p) => p.take_index === takeIndex && (practiceSource === 'tip' ? p.practice_kind === 'tip' : (issueIndex == null || p.issue_index === issueIndex)));
       const card = practice && cards.get(practice.id);
       if (card) { card.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); card.focus(); }
     } catch (e) {
@@ -1921,6 +2144,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
 
   function makeCard(initial) {
     let p = initial, sending = false, mode = 'text', rec = null, recordTimer = 0, captureToken = 0, discardToken = 0, recordingContext = null, blob = null, previewUrl = '', contentKey = '';
+    let voiceDraft = null, voiceRecovery = null, stoppingVoice = null, preparingVoice = false, restoreVersion = 0;
     const card = h('article', { class: 'card thought-card', id: `thought-${p.id}` });
     const title = h('h3', { tabindex: -1 });
     const topicLabel = h('p', { class: 'learning-topic soft', hidden: true });
@@ -1961,6 +2185,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     const cancelButton = h('button', { class: 'btn ghost', type: 'button', hidden: true, onclick: cancelVoice }, 'Отменить запись');
     const sendAudio = h('button', { class: 'btn', type: 'button', hidden: true, onclick: submitVoice }, 'Отправить запись тренеру', icon('arrow'));
     const preview = h('div', { class: 'thought-preview' });
+    const voiceRestore = h('div', { class: 'callout', hidden: true, 'aria-live': 'polite' });
     const voiceInstruction = h('p', { class: 'small soft' }, 'Произнесите новую версию. До 90 секунд: закончите запись, когда выразили мысль.');
     const voiceBox = h('div', { class: 'thought-voice', hidden: true },
       voiceInstruction,
@@ -1969,11 +2194,21 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       answerFormat,
       h('div', { class: 'seg thought-modes', role: 'group', 'aria-label': 'Как ответить' }, textButton, voiceButton),
       h('details', { class: 'thought-meaning' }, intentSummary, h('div', { class: 'field' }, intentLabel, intent)),
-      textBox, voiceBox, err, status);
+      voiceRestore, textBox, voiceBox, err, status);
     const transferButton = h('button', { class: 'btn ghost', type: 'button', onclick: transfer }, 'Применить на другой теме', icon('arrow'));
+    const repeatButton = h('button', { class: 'btn ghost', type: 'button', hidden: true, onclick: () => {
+      const rootId = p.skill_root_id || p.id;
+      const existing = (session().thoughts || []).find((item) => item.skill_root_id === rootId && item.practice_stage === 'repeat');
+      if (existing) { const next = cards.get(existing.id); if (next) { next.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); next.focus(); } return; }
+      mutate(`/thoughts/${p.id}/repeat`, { method: 'POST', body: {} }, (fresh) => {
+        const child = (fresh.thoughts || []).find((item) => item.skill_root_id === rootId && item.practice_stage === 'repeat');
+        if (child) setTimeout(() => { const next = cards.get(child.id); if (live() && next) { next.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); next.focus(); } }, 0);
+      });
+    } }, 'Проверить приём ещё раз', icon('arrow'));
+    const repeatMessage = h('p', { class: 'small soft', hidden: true });
     const transferMessage = h('p');
     const nextAction = h('a', { class: 'btn', href: '#/learn/synonyms', hidden: true }, 'Выбрать другое действие', icon('arrow'));
-    const transferArea = h('div', { class: 'learning-transfer', hidden: true }, transferMessage, transferButton, nextAction);
+    const transferArea = h('div', { class: 'learning-transfer', hidden: true }, transferMessage, transferButton, repeatMessage, repeatButton, nextAction);
     card.append(h('div', { class: 'card-head' }, title, h('span', { class: 'spacer' }), phase), topicLabel, materials, task, comparisons, hints, h('div', { class: 'row' }, hintButton), form, transferArea);
     const path = (suffix) => `/api/sessions/${session().id}${suffix}`;
     const pending = () => (p.attempts || []).some((a) => ['processing', 'reviewing'].includes(a.status));
@@ -2014,9 +2249,11 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     }
 
     async function beginVoice() {
-      if (active || sending || pending()) return;
+      if (active || sending || preparingVoice || pending()) return;
       if (!canRecord()) { err.textContent = 'Сначала закончите текущую запись упражнения.'; err.hidden = false; return; }
       const token = ++captureToken;
+      restoreVersion++;
+      voiceRestore.hidden = true;
       active = controller;
       recordingChanged(true);
       recordStatus.textContent = 'Включаю микрофон…';
@@ -2024,12 +2261,18 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       try {
         await mic.open();
         if (!live() || token !== captureToken) { if (active === controller) releaseMic(); return; }
+        // Новая попытка не удаляет сохранённую копию предыдущей.
         clearPreview();
-        if (window.TrainerDrafts) await TrainerDrafts.remove('audio:' + path(`/thoughts/${p.id}/audio`));
-        if (!live() || token !== captureToken) { if (active === controller) releaseMic(); return; }
         discardToken++;
         recordingContext = window.TrainerDrafts ? { ...TrainerDrafts.context(), path: path(`/thoughts/${p.id}/audio`) } : null;
-        rec = new Recorder(mic.stream);
+        rec = new Recorder(mic.stream, { journal: {
+          path: path(`/thoughts/${p.id}/audio`), userId: app.state && app.state.user_id, context: recordingContext,
+          onStatus: (state) => {
+            if (!state.durable && state.notice && live() && token === captureToken) {
+              err.textContent = state.notice; err.hidden = false;
+            }
+          },
+        } });
         rec.start();
         recordStatus.textContent = 'Запись · 0:00';
         recordTimer = setInterval(() => {
@@ -2039,6 +2282,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
         }, 250);
         err.hidden = true;
       } catch (e) {
+        if (rec) rec.cancel({ preserve: true }); rec = null;
         releaseMic();
         err.textContent = e.message;
         err.hidden = false;
@@ -2057,16 +2301,79 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       previewUrl = '';
       blob = null;
+      voiceDraft = voiceRecovery = null;
     }
     function cancelVoice(discard = true) {
-      captureToken++;
+      captureToken++; restoreVersion++;
+      voiceRestore.hidden = true;
       if (discard !== false) discardToken++;
-      if (rec) rec.cancel();
+      const recording = rec || stoppingVoice, saved = voiceDraft, recovered = voiceRecovery;
+      if (recording) recording.cancel({ preserve: discard === false });
       rec = null;
       releaseMic();
       clearPreview();
-      if (discard !== false && window.TrainerDrafts) TrainerDrafts.remove('audio:' + path(`/thoughts/${p.id}/audio`));
+      if (discard !== false && window.TrainerDrafts) {
+        if (saved) TrainerDrafts.remove(saved.id, saved.requestId, saved.profile);
+        if (recovered) TrainerDrafts.removeRecording(recovered.recordingId, recovered.recordingRequestId, recovered.profile);
+      }
       refreshControls();
+    }
+    function showVoicePreview(record, incomplete = false) {
+      clearPreview();
+      blob = record.blob;
+      previewUrl = URL.createObjectURL(blob);
+      if (incomplete) {
+        voiceRecovery = { ...record, idx: 0, requestId: null, recordingId: record.id,
+          recordingRequestId: record.requestId, downloadUrl: previewUrl, sending: false, playback: 'unverified' };
+        voiceRecovery.controls = recoveredRecordingControls(voiceRecovery, {
+          send: submitVoice,
+          recordAgain: () => { clearPreview(); controls(); beginVoice(); },
+          discard: async () => {
+            const old = voiceRecovery;
+            if (!old || old.sending) return;
+            const removed = await TrainerDrafts.removeRecording(old.recordingId, old.recordingRequestId, old.profile);
+            if (voiceRecovery !== old || !live()) return;
+            if (!removed) { err.textContent = 'Не удалось убрать фрагмент с устройства. Попробуйте ещё раз.'; err.hidden = false; return; }
+            clearPreview(); controls();
+          },
+        });
+        preview.append(h('p', { class: 'small soft' }, record.notice,
+          record.mayBeActive ? ' Запись могла продолжаться в другой вкладке. Проверьте её перед отправкой.' : ''), voiceRecovery.controls.el);
+      } else {
+        voiceDraft = record;
+        preview.append(h('audio', { controls: true, preload: 'metadata', src: previewUrl, 'aria-label': 'Послушать новую формулировку перед отправкой' }),
+          h('a', { class: 'btn ghost small', href: previewUrl, download: 'формулировка' + (blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать запись'));
+      }
+    }
+    async function restoreVoiceDraft() {
+      if (!window.TrainerDrafts) return;
+      const version = ++restoreVersion, owner = TrainerDrafts.profile(), target = path(`/thoughts/${p.id}/audio`);
+      const records = (await TrainerDrafts.list()).filter((item) => item.kind === 'audio' && item.path === target && item.blob && item.profile === owner)
+        .sort((a, b) => b.updated - a.updated);
+      let record = records[0], incomplete = false;
+      if (!record && TrainerDrafts.recordings) {
+        record = (await TrainerDrafts.recordings()).filter((item) => item.path === target && item.profile === owner).sort((a, b) => b.updated - a.updated)[0];
+        incomplete = !!record;
+      }
+      if (!record || !live() || version !== restoreVersion || owner !== TrainerDrafts.profile() || blob || rec || stoppingVoice) return;
+      const restore = h('button', { class: 'btn ghost small', type: 'button', onclick: async () => {
+        if (sending || preparingVoice || active || pending() || owner !== TrainerDrafts.profile()) return;
+        restore.disabled = true;
+        const saved = incomplete ? await TrainerDrafts.recoverRecording(record.id) : record;
+        if (!live() || version !== restoreVersion || owner !== TrainerDrafts.profile()) return;
+        if (!saved || !saved.blob) { voiceRestore.hidden = true; return; }
+        mode = 'voice';
+        if (saved.headers && saved.headers['X-Thought-Meaning']) {
+          try { intent.value = decodeURIComponent(saved.headers['X-Thought-Meaning']); saveText(); } catch (_) {}
+        }
+        showVoicePreview(saved, incomplete);
+        voiceRestore.hidden = true;
+        controls();
+      } }, 'Восстановить запись');
+      voiceRestore.replaceChildren(h('p', { class: 'small soft' }, incomplete
+        ? 'Сохранилась незавершённая запись этой практики. Можно проверить звук, скачать фрагмент или записать ответ заново.'
+        : 'На устройстве сохранилась запись этой практики. Можно прослушать её и отправить тренеру.'), restore);
+      voiceRestore.hidden = false;
     }
     async function finishVoice() {
       if (!rec) return;
@@ -2074,34 +2381,74 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       const expectedDiscard = discardToken, context = recordingContext;
       const headers = intent.value.trim() ? { 'X-Thought-Meaning': encodeURIComponent(intent.value.trim()) } : {};
       const recording = rec;
-      rec = null;
+      rec = null; stoppingVoice = recording;
       clearInterval(recordTimer);
       recordStatus.textContent = 'Сохраняю запись…';
       refreshControls();
-      const recorded = await recording.stop();
+      const recorded = await recording.stop({ headers });
+      if (stoppingVoice === recording) stoppingVoice = null;
       releaseMic();
-      let saved;
-      if (recorded.size >= 1200 && expectedDiscard === discardToken && context && window.TrainerDrafts) {
+      let saved = recording.savedDraft;
+      if (!saved && recorded.size && expectedDiscard === discardToken && context && window.TrainerDrafts) {
         saved = await TrainerDrafts.audio(context.path, recorded, headers, undefined, context);
       }
-      if (!live() || token !== captureToken) return;
+      if (expectedDiscard !== discardToken) {
+        if (saved && window.TrainerDrafts) await TrainerDrafts.remove(saved.id, saved.requestId, saved.profile);
+        return;
+      }
+      if (!live() || token !== captureToken || (context && window.TrainerDrafts && context.profile !== TrainerDrafts.profile())) return;
       if (recorded.size < 1200) { err.textContent = 'Запись получилась пустой. Проверьте микрофон и попробуйте снова.'; err.hidden = false; }
       else {
-        blob = recorded;
-        previewUrl = URL.createObjectURL(blob);
-        preview.append(h('audio', { controls: true, src: previewUrl, 'aria-label': 'Послушать новую формулировку перед отправкой' }));
+        showVoicePreview(saved || { blob: recorded, headers, profile: context && context.profile });
         if (saved && !saved.durable) { err.textContent = 'Запись есть на этой странице, но сохранить её на устройстве не удалось. Не закрывайте страницу до отправки.'; err.hidden = false; }
       }
       refreshControls();
     }
-    function submitVoice() {
-      if (!blob || sending || pending() || active) return;
+    async function submitVoice() {
+      if (!blob || blob.size < 1200 || sending || preparingVoice || pending() || active) return;
+      const saved = voiceDraft, recovered = voiceRecovery, recorded = blob;
+      if (recovered && recovered.playback !== 'ready') return;
+      const owner = saved && saved.profile || recovered && recovered.profile || recordingContext && recordingContext.profile;
+      if (window.TrainerDrafts && owner && owner !== TrainerDrafts.profile()) {
+        err.textContent = 'Профиль изменился. Откройте нужную практику заново.'; err.hidden = false; return;
+      }
       const headers = intent.value.trim() ? { 'X-Thought-Meaning': encodeURIComponent(intent.value.trim()) } : {};
-      mutate(`/thoughts/${p.id}/audio`, { method: 'PUT', blob, headers }, clearPreview);
+      const target = path(`/thoughts/${p.id}/audio`);
+      let requestId = saved && saved.requestId;
+      preparingVoice = true; controls();
+      try {
+        if (window.TrainerDrafts && (!requestId || JSON.stringify(saved.headers || {}) !== JSON.stringify(headers))) {
+          const claim = await TrainerDrafts.operation('PUT', target, recorded,
+            { ...headers, 'X-Trainer': '1', 'Content-Type': recorded.type || 'application/octet-stream' });
+          const prepared = recovered && TrainerDrafts.prepareRecovery
+            ? await TrainerDrafts.prepareRecovery(recovered.recordingId, recovered.recordingRequestId, claim, headers, recovered.profile) : claim;
+          requestId = prepared.requestId;
+          if (owner && owner !== TrainerDrafts.profile()) throw new Error('Профиль изменился. Откройте нужную практику заново.');
+          if (!recovered) voiceDraft = await TrainerDrafts.audio(target, recorded, headers, requestId,
+            { ...(recordingContext || {}), profile: owner || TrainerDrafts.profile(), recordingId: saved && saved.recordingId || 'voice:' + requestId });
+        }
+        if (!live() || blob !== recorded || (owner && window.TrainerDrafts && owner !== TrainerDrafts.profile())) return;
+        preparingVoice = false;
+        const options = { method: 'PUT', blob: recorded, headers, requestId,
+          onRequestId: (id) => { if (recovered) recovered.requestId = id; } };
+        if (recovered) {
+          sending = true; err.hidden = true; controls();
+          try {
+            const fresh = await api(target, options);
+            // Подтверждение убирает именно этот фрагмент, даже если карточка уже закрыта.
+            if (window.TrainerDrafts) await TrainerDrafts.removeRecording(recovered.recordingId, recovered.recordingRequestId, recovered.profile);
+            if (live()) { clearPreview(); changed(fresh); }
+          } catch (e) {
+            if (live()) { err.textContent = e.message + ' Фрагмент остался на устройстве. Можно повторить отправку.'; err.hidden = false; }
+          } finally { sending = false; if (live()) controls(); }
+        } else await mutate(`/thoughts/${p.id}/audio`, options, clearPreview);
+      } catch (e) {
+        if (live()) { err.textContent = e.message; err.hidden = false; }
+      } finally { preparingVoice = false; if (live()) controls(); }
     }
 
     function controls() {
-      const blocked = sending || pending() || !!active;
+      const blocked = sending || preparingVoice || pending() || !!active;
       const recording = active === controller;
       answer.disabled = blocked;
       intent.disabled = blocked;
@@ -2121,8 +2468,10 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       recordButton.replaceChildren(icon('mic'), blob ? 'Записать заново' : 'Начать запись');
       stopButton.hidden = !recording || !rec;
       cancelButton.hidden = !recording && !blob;
-      sendAudio.hidden = !blob;
-      sendAudio.disabled = blocked;
+      cancelButton.disabled = sending || preparingVoice;
+      sendAudio.hidden = !blob || !!voiceRecovery;
+      sendAudio.disabled = blocked || !blob || blob.size < 1200;
+      if (voiceRecovery) { voiceRecovery.sending = blocked; voiceRecovery.controls.update(); }
       card.querySelectorAll('[data-thought-retry]').forEach((b) => { b.disabled = blocked; });
       const newSynonyms = p.learning_kind === 'synonyms' && !!p.practice_format;
       transferArea.hidden = !successfulThought(p) || (!!p.transfer_from && !newSynonyms);
@@ -2137,6 +2486,23 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
             : 'Реплика подошла. Теперь примените тот же приём в другой ситуации с новыми словами.'
         : p.learning_kind ? 'Получилось. Попробуйте тот же приём в другой ситуации, чтобы проверить его самостоятельно.' : 'Фраза стала яснее. Можно попробовать отдельное задание на уточнение мысли в другой ситуации.';
       transferButton.replaceChildren(newSynonyms ? 'Другая ситуация — новые слова' : p.learning_kind ? (hasNext ? 'Открыть задание на другой теме' : 'Применить на другой теме') : (hasNext ? 'Открыть задание на уточнение' : 'Попробовать задание на уточнение'), icon('arrow'));
+      if (p.practice_kind === 'tip') {
+        transferArea.hidden = !successfulThought(p);
+        transferButton.hidden = p.practice_stage === 'repeat';
+        transferButton.replaceChildren(hasNext ? 'Открыть следующую тему' : p.practice_stage === 'transfer' ? 'Попробовать ещё одну тему' : 'Применить этот приём на другой теме', icon('arrow'));
+        transferMessage.textContent = p.practice_stage === 'repeat' ? 'Повтор сохранён. Несколько самостоятельных попыток помогают увидеть, насколько устойчиво получается приём.' : p.practice_stage === 'transfer' ? 'Проверена новая тема. Можно попробовать ещё одну; результат с подсказками учитывается отдельно.' : 'Приём применён в своей формулировке. Теперь попробуйте его на другой теме.';
+        const same = (session().thoughts || []).filter((item) => item.practice_kind === 'tip' && (item.skill_root_id || item.id) === (p.skill_root_id || p.id));
+        const times = same.filter((item) => item.practice_stage === 'transfer').flatMap((item) => (item.attempts || [])
+          .filter((attempt) => successfulThought({ attempts: [attempt] }) && attempt.hints_used === 0)
+          .map((attempt) => new Date(attempt.finished || attempt.created).getTime())).filter(Number.isFinite);
+        const due = times.length ? Math.min(...times) + 24 * 60 * 60 * 1000 : null;
+        const repeated = same.find((item) => item.practice_stage === 'repeat');
+        repeatMessage.hidden = due == null;
+        repeatButton.hidden = due == null;
+        repeatButton.disabled = blocked || (!repeated && Date.now() < due);
+        repeatButton.replaceChildren(repeated ? 'Открыть сохранённый повтор' : 'Проверить приём ещё раз', icon('arrow'));
+        repeatMessage.textContent = due == null ? '' : repeated ? 'Повторная проверка уже открыта.' : 'Проверьте этот приём позже на новой теме. Доступно с ' + new Date(due).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '.';
+      }
       const attempts = p.attempts || [];
       const latest = attempts[attempts.length - 1];
       const finished = latest && ['done', 'error'].includes(latest.status);
@@ -2155,13 +2521,17 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       if (key !== contentKey) {
         contentKey = key;
         title.textContent = (p.learning_kind ? p.title : null) || p.goal || 'Сформулируйте мысль яснее';
-        topicLabel.hidden = !p.learning_kind || !p.topic;
+        topicLabel.hidden = (!p.learning_kind && p.practice_kind !== 'tip') || !p.topic;
         topicLabel.textContent = p.topic ? (p.transfer_from && p.transfer_type !== 'new_exercise' ? 'Новая тема: ' : 'Ситуация: ') + p.topic : '';
         task.textContent = p.task || 'Сохраните исходный смысл и попробуйте выразить его яснее.';
-        phase.textContent = p.transfer_type === 'new_exercise' ? 'Отдельное задание' : p.transfer_from ? 'Другая тема' : p.source === 'learning' ? 'Учебное задание' : 'Своя формулировка';
-        materials.replaceChildren(...[learningMaterials(p)].filter(Boolean));
+        phase.textContent = p.practice_stage === 'repeat' ? 'Повтор позже' : p.transfer_type === 'new_exercise' ? 'Отдельное задание' : p.transfer_from ? 'Другая тема' : p.practice_kind === 'tip' ? 'Практика совета' : p.source === 'learning' ? 'Учебное задание' : 'Своя формулировка';
+        materials.replaceChildren(...[learningMaterials(p),
+          p.practice_kind === 'tip' && p.practice_stage === 'practice' ? h('div', { class: 'callout' }, h('h4', null, 'Ваш совет для практики'), h('p', null, p.source_tip)) : null,
+          (p.source_revision || 0) < (session().transcript_revision || 0) ? h('p', { class: 'small soft' }, 'Эта практика относится к прежней версии расшифровки. Её исходник и ответы сохранены отдельно.') : null,
+        ].filter(Boolean));
         const format = p.practice_format;
-        answerLabel.textContent = format && format.answer_label ? format.answer_label : p.learning_kind === 'lexicon' ? 'Ваше предложение с этим словом' : p.source === 'learning' ? 'Ваш ответ' : 'Ваша новая формулировка';
+        const newTipTopic = p.practice_kind === 'tip' && !!p.transfer_from;
+        answerLabel.textContent = format && format.answer_label ? format.answer_label : newTipTopic ? 'Ваш ответ на новую тему' : p.learning_kind === 'lexicon' ? 'Ваше предложение с этим словом' : p.source === 'learning' ? 'Ваш ответ' : 'Ваша новая формулировка';
         answerFormat.hidden = p.learning_kind !== 'synonyms';
         if (p.learning_kind === 'synonyms') {
           answerFormat.replaceChildren(...(format ? [
@@ -2177,7 +2547,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
           ]));
           answer.setAttribute('aria-describedby', answerFormat.id);
         } else answer.removeAttribute('aria-describedby');
-        answer.placeholder = format && format.placeholder ? format.placeholder : p.learning_kind === 'lexicon' ? 'Придумайте свою фразу для указанной ситуации' : p.source === 'learning' ? 'Сформулируйте ответ своими словами' : 'Скажите то же самое своими словами';
+        answer.placeholder = format && format.placeholder ? format.placeholder : newTipTopic ? 'Ответьте своими словами, применяя тот же приём' : p.learning_kind === 'lexicon' ? 'Придумайте свою фразу для указанной ситуации' : p.source === 'learning' ? 'Сформулируйте ответ своими словами' : 'Скажите то же самое своими словами';
         submit.replaceChildren(format ? 'Проверить мою реплику' : 'Проверить мою версию', icon('arrow'));
         voiceInstruction.textContent = format ? 'Произнесите готовую реплику по условию. До 90 секунд: закончите запись, когда выразили мысль.' : 'Произнесите новую версию. До 90 секунд: закончите запись, когда выразили мысль.';
         intentSummary.textContent = p.source === 'learning' ? 'Добавить пояснение к ответу' : 'Уточнить, что я хотел сказать';
@@ -2186,24 +2556,25 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
         const original = p.original || {};
         const originalAudio = original.audio ? h('audio', { controls: true, preload: 'metadata', src: url(`media/${session().id}/${original.audio}`), 'aria-label': 'Исходная запись' }) : null;
         if (originalAudio && original.start > 0) originalAudio.addEventListener('loadedmetadata', () => { originalAudio.currentTime = original.start; }, { once: true });
-        const before = h('div', { class: 'thought-version' }, h('h4', null, p.source === 'learning' ? 'Учебная ситуация' : 'Исходная фраза'), h('p', { class: 'thought-quote' }, original.text), originalAudio,
+        const before = newTipTopic && !original.text ? null : h('div', { class: 'thought-version' }, h('h4', null, p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from) ? 'Учебная ситуация' : 'Исходная фраза'), h('p', { class: 'thought-quote' }, original.text), originalAudio,
           originalAudio ? h('p', { class: 'small soft' }, original.start != null ? `Фрагмент с ${mmss(original.start)}. Доступна вся исходная запись.` : 'Доступна вся исходная запись.') : null,
-          original.context && original.context !== original.text ? (p.source === 'learning'
+          original.context && original.context !== original.text ? (p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from)
             ? h('div', { class: 'learning-context' }, h('h5', null, 'Условия'), h('p', { class: 'thought-context' }, original.context))
             : h('details', null, h('summary', null, 'Контекст'), h('p', { class: 'thought-context' }, original.context))) : null);
         const attempts = p.attempts || [];
         const after = h('div', { class: 'thought-versions' }, h('h4', null, attempts.length ? (p.source === 'learning' ? 'Ваши ответы' : 'Ваши новые версии') : 'Здесь появится ваш ответ'),
-          !attempts.length ? h('p', { class: 'soft' }, 'Напишите или произнесите новую формулировку ниже. Исходная фраза останется для сравнения.') : null,
+          !attempts.length ? h('p', { class: 'soft' }, newTipTopic ? 'Напишите или произнесите свой ответ. Тренер проверит тот же приём на новом содержании.' : 'Напишите или произнесите новую формулировку ниже. Исходная фраза останется для сравнения.') : null,
           [...attempts].reverse().map((a, reverseIndex) => {
             const review = a.review || {};
-            const label = { improved: p.source === 'learning' ? 'Задание выполнено' : 'Стало яснее', needs_work: 'Можно доработать', unclear: 'Нужно уточнить смысл' }[review.assessment];
+            const label = { improved: p.practice_kind === 'tip' ? 'Приём применён' : p.source === 'learning' ? 'Задание выполнено' : 'Стало яснее', needs_work: 'Можно доработать', unclear: 'Нужно уточнить смысл' }[review.assessment];
             return h('div', { class: 'thought-version thought-attempt', id: `thought-attempt-${p.id}-${a.id}`, tabindex: -1 }, h('div', { class: 'row' }, h('h5', null, `Вариант ${attempts.length - reverseIndex}`), label ? h('span', { class: 'chip' }, label) : null),
               a.text ? h('p', { class: 'thought-quote' }, a.text) : h('p', { class: 'soft' }, a.status === 'processing' ? 'Распознаю запись…' : 'Текст пока не распознан.'),
               a.audio ? h('audio', { controls: true, preload: 'metadata', src: url(`media/${session().id}/${a.audio}`), 'aria-label': `Запись новой формулировки, вариант ${attempts.length - reverseIndex}` }) : null,
               a.intended_meaning ? h('p', { class: 'small soft' }, 'Вы уточнили смысл: ', a.intended_meaning) : null,
               a.status === 'done' ? h('div', { class: 'thought-review' },
                 h('p', null, review.feedback),
-                review.meaning_preserved ? h('p', { class: 'small soft' }, (p.source === 'learning'
+                p.practice_kind === 'tip' ? h('p', { class: 'small soft' }, { yes: 'В этой попытке применение приёма видно.', no: 'Применение приёма пока не подтверждено.', unclear: 'По этому ответу применение приёма нельзя уверенно проверить.' }[review.goal_met] || 'Применение приёма требует проверки.') : null,
+                review.meaning_preserved ? h('p', { class: 'small soft' }, (p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from)
                   ? { yes: 'Ответ соответствует смыслу задания.', no: 'Сверьтесь со смыслом задания.', unclear: 'Смысл ответа требует уточнения.' }
                   : { yes: 'Смысл сохранён.', no: 'Смысл изменился. Сверьтесь с исходной фразой.', unclear: 'Сохранение смысла требует уточнения.' })[review.meaning_preserved]) : null,
                 p.transfer_from && p.transfer_type !== 'new_exercise' && a.status === 'done' ? h('p', { class: 'small soft' }, a.hints_used === 0 ? 'Попытка на новой теме без открытых подсказок.' : 'Попытка на новой теме с помощью подсказок. Самостоятельный перенос пока не подтверждён.') : null,
@@ -2211,13 +2582,15 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
               ['processing', 'reviewing'].includes(a.status) ? h('p', { class: 'small soft', role: 'status' }, a.status === 'processing' ? 'Распознаю речь…' : 'Тренер сравнивает формулировки…') : null,
               a.status === 'error' ? h('div', null, h('p', { class: 'thought-error' }, a.error || 'Проверка не завершилась. Ваша версия сохранена.'), h('button', { class: 'btn ghost small', type: 'button', 'data-thought-retry': true, onclick: () => mutate(`/thoughts/${p.id}/attempts/${a.id}/retry`, { method: 'POST', body: {} }) }, icon('redo'), 'Повторить проверку')) : null);
           }));
-        comparisons.replaceChildren(before, after);
+        comparisons.classList.toggle('single', !before);
+        comparisons.replaceChildren(...[before, after].filter(Boolean));
         hints.replaceChildren(...(p.hints || []).slice(0, p.hint_count || 0).map((text, i) => h('div', { class: 'callout' }, h('div', { class: 'label' }, `Подсказка ${i + 1}`), h('p', null, text))));
       }
       controls();
     }
     const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
     update(initial);
+    restoreVoiceDraft();
     return controller;
   }
 
@@ -2230,7 +2603,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     }
     el.hidden = !entry.childElementCount && !cards.size;
   }
-  return { el, update, start, isRecording: () => !!active, focus() { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.focus({ preventScroll: true }); }, destroy() { destroyed = true; cards.forEach((c) => c.destroy()); } };
+  return { el, update, start, startTip, isRecording: () => !!active, focus(id) { const card = cards.get(id); if (card) { card.el.scrollIntoView({ behavior: 'smooth', block: 'start' }); card.focus(); } else { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.focus({ preventScroll: true }); } }, destroy() { destroyed = true; cards.forEach((c) => c.destroy()); } };
 }
 
 /* ---- расшифровка с подсветкой ---- */
@@ -2368,7 +2741,8 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
           els[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
           els.forEach((e) => e.classList.add('flash'));
           setTimeout(() => els.forEach((e) => e.classList.remove('flash')), 1800);
-          if (player) player.seek(Math.max(0, t.words[it.loc.start].s - 0.3));
+          const sourceWord = (t.words || [])[it.loc.start];
+          if (player && sourceWord && Number.isFinite(sourceWord.s)) player.seek(Math.max(0, sourceWord.s - 0.3));
         });
         return h('div', { class: 'issue' },
           h('div', { class: 'kind' }, h('span', { class: 'chip' }, it.kind)),
@@ -2709,8 +3083,38 @@ function lineChart(points, { format = f1, title, sub }) {
     h('div', { class: 'chart' }, svgEl));
 }
 
+function skillProgressCard(payload) {
+  const skills = payload && Array.isArray(payload.skills) ? payload.skills : [];
+  const labels = [['attempted', 'Попробовали приём'], ['applied', 'Применили в своей мысли'],
+    ['independent_transfer', 'Применили на другой теме самостоятельно'], ['repeated_later', 'Повторили спустя время самостоятельно']];
+  return h('section', { class: 'card skill-progress', 'aria-label': 'Прогресс по приёмам' },
+    h('h2', null, 'Прогресс по приёмам'),
+    h('p', { class: 'soft' }, 'Здесь видны конкретные попытки применить совет тренера. Удачный ответ с подсказкой и самостоятельное выполнение учитываются отдельно.'),
+    payload && payload.unavailable ? h('p', { class: 'small soft', role: 'status' }, 'Не удалось загрузить историю приёмов. Обновите страницу позже.') : null,
+    !skills.length && !(payload && payload.unavailable) ? h('p', { class: 'small soft' }, 'После разбора нажмите «Попробовать этот приём». Здесь появятся ваши попытки и подтверждённые результаты.') : null,
+    skills.map((skill) => {
+      const target = skill.repeat_target;
+      const message = h('p', { class: 'small soft', role: 'status' });
+      const repeat = target ? h('button', { class: 'btn ghost', type: 'button', disabled: !target.available, onclick: async () => {
+        repeat.disabled = true; message.textContent = 'Открываю новую тему…';
+        try {
+          const fresh = await api(`/api/sessions/${target.session_id}/thoughts/${target.practice_id}/repeat`, { method: 'POST', body: {} });
+          const child = (fresh.thoughts || []).find((p) => p.skill_root_id === target.practice_id && p.practice_stage === 'repeat');
+          location.hash = `#/s/${target.session_id}?thought=${child ? child.id : target.practice_id}`;
+        } catch (error) { message.textContent = error.message; repeat.disabled = false; }
+      } }, 'Повторить на новой теме', icon('arrow')) : null;
+      return h('article', { class: 'skill-progress-item' }, h('h3', null, skill.label || 'Приём из совета'),
+        h('p', { class: 'soft' }, skill.goal),
+        h('ol', { class: 'skill-stages' }, labels.map(([key, label]) => h('li', { class: skill.stages && skill.stages[key] ? 'confirmed' : '' },
+          h('span', null, label), h('span', { class: 'small soft' }, skill.stages && skill.stages[key] ? 'Подтверждено' : 'Ещё не подтверждено')))),
+        h('p', { class: 'small soft' }, `Сохранено попыток: ${(skill.counts || {}).attempts || 0}. Это наблюдения по ответам, а не окончательная оценка навыка.`),
+        target && !target.available ? h('p', { class: 'small soft' }, 'Новый повтор доступен с ' + new Date(target.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '.') : null,
+        h('div', { class: 'row' }, h('a', { class: 'btn ghost', href: `#/s/${skill.last_session_id}?thought=${skill.last_practice_id || '1'}` }, 'Посмотреть свои попытки'), repeat), message);
+    }));
+}
+
 async function ProgressView(ctx) {
-  const [sessions, state] = await Promise.all([api('/api/sessions'), api('/api/state')]);
+  const [sessions, state, skillData] = await Promise.all([api('/api/sessions'), api('/api/state'), api('/api/skills').catch(() => ({ skills: [], unavailable: true }))]);
   app.state = state;
   const realSessions = sessions.filter((session) => !isDemoSession(session));
   const demoNotice = realSessions.length < sessions.length ? h('p', { class: 'small soft' },
@@ -2719,6 +3123,7 @@ async function ProgressView(ctx) {
   if (!done.length) {
     render(ctx, h('h1', { style: 'margin-bottom:18px' }, 'Прогресс'),
       demoNotice,
+      skillProgressCard(skillData),
       h('div', { class: 'card empty' }, h('h3', null, 'Пока нечего сравнивать'), h('p', null, 'После первых разборов здесь появятся графики: паразиты, заминки, темп и оценки.'),
         h('p', { style: 'margin-top:14px' }, h('a', { class: 'btn', href: '#/' }, 'К упражнениям'))));
     return null;
@@ -2826,6 +3231,7 @@ async function ProgressView(ctx) {
     h('div', { class: 'ex-head' }, h('h1', null, 'Прогресс')),
     demoNotice,
     kpis,
+    skillProgressCard(skillData),
     h('div', { class: 'section-title' }, h('h2', null, 'Динамика'), h('span', { class: 'muted' }, 'каждая точка — тренировка с разбором'), h('span', { class: 'spacer' }), tableBtn),
     h('div', { class: 'charts' }, charts),
     tableCard,

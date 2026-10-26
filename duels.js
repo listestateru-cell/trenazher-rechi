@@ -336,7 +336,10 @@ window.TrainerDuels = (() => {
         if (!alive()) { closeOwnMic(); return; }
         if (Date.parse(session.duel_end_at) - now() < 58500) throw new Error('Связь задержала старт. Запись не началась; повторите встречу с согласия соперника.');
         recordingContext = window.TrainerDrafts && TrainerDrafts.context(); recordingStream = mic.stream;
-        rec = new Recorder(mic.stream); rec.start(); recording = true;
+        rec = new Recorder(mic.stream, { journal: {
+          path: `/api/sessions/${session.id}/takes/0`, userId: (own(match) || {}).id, context: recordingContext,
+          headers: { 'X-Duel-Nonce': session.duel_nonce },
+        } }); rec.start(); recording = true;
         const actual = data.matches.find((item) => item.id === match.id);
         if (actual) { actual.topic = session.topic; actual.status = 'live'; }
       } catch (caught) { error = caught.message; closeOwnMic(); }
@@ -345,13 +348,15 @@ window.TrainerDuels = (() => {
     async function finishRecording() {
       if (!recording || !rec) return;
       recording = false;
-      const stopped = rec; rec = null;
-      blob = await stopped.stop();
+      const stopped = rec, recordedSession = session, context = recordingContext; rec = null;
+      const headers = { 'X-Duel-Nonce': recordedSession.duel_nonce };
+      blob = await stopped.stop({ headers });
+      uploadRequest = stopped.savedDraft && stopped.savedDraft.requestId || uploadRequest;
       if (mic.stream === recordingStream) mic.close();
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(blob);
-      if (!alive()) {
-        if (window.TrainerDrafts) await TrainerDrafts.audio(`/api/sessions/${session.id}/takes/0`, blob, { 'X-Duel-Nonce': session.duel_nonce }, undefined, recordingContext || {});
+      if (!alive() || (context && window.TrainerDrafts && TrainerDrafts.profile && context.profile !== TrainerDrafts.profile())) {
+        if (window.TrainerDrafts && !stopped.savedDraft) await TrainerDrafts.audio(`/api/sessions/${recordedSession.id}/takes/0`, blob, headers, undefined, context || {});
         return;
       }
       await sendAudio();

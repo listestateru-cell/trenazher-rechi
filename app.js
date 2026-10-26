@@ -2366,6 +2366,7 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
       }))));
   }
   if (rt.stronger) {
+    const explanation = typeof rt.stronger_explanation === 'string' ? rt.stronger_explanation.trim() : '';
     const readBtn = h('button', { class: 'btn quiet small', type: 'button' }, icon('speaker'), 'Послушать');
     readBtn.addEventListener('click', () => { if (!speak(rt.stronger)) toast('В системе нет русского голоса для чтения вслух'); });
     const copyBtn = h('button', { class: 'btn quiet small', type: 'button' }, icon('copy'), 'Копировать');
@@ -2375,7 +2376,9 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
     box.append(h('div', { class: 'stronger' },
       h('div', { class: 'label' }, 'Как сказать сильнее', h('span', { class: 'spacer' })),
       h('p', null, rt.stronger),
-      h('div', { class: 'row', style: 'margin-top:10px' }, readBtn, copyBtn)));
+      h('div', { class: 'row', style: 'margin-top:10px' }, readBtn, copyBtn),
+      explanation ? h('section', { class: 'stronger-explanation', 'aria-label': 'Что изменилось и почему' },
+        h('h3', null, 'Что изменилось и почему'), h('p', null, explanation)) : null));
   }
   return box;
 }

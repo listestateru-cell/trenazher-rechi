@@ -905,6 +905,18 @@ function sprintWords(take) {
   return out;
 }
 
+function exerciseInstructionsForDisplay(exId, definition, currentDefinition) {
+  // Снимок группы хранит условия зачёта; устаревшие учебные подсказки не возвращаем.
+  if (exId === 'minute' && currentDefinition) {
+    return { ...definition, hint: currentDefinition.hint, howto: [...currentDefinition.howto] };
+  }
+  if (exId === 'sprint' && Array.isArray(definition.howto)) {
+    const retiredExample = 'Например, к слову «море» вы назвали «лодка, ветер, маяк». История: «Ветер отнёс нашу лодку от берега. Мы заметили маяк и по его свету вернулись в порт».';
+    return { ...definition, howto: definition.howto.filter(line => line !== retiredExample) };
+  }
+  return definition;
+}
+
 async function ExerciseView(ctx, { exId, sid, params }) {
   const v = {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
@@ -940,6 +952,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
   if (v.session && v.groupId) v.ex = { ...v.ex, prep: v.session.group_prep ?? v.ex.prep,
     howto: v.session.group_howto || v.ex.howto, hint: v.session.group_hint || v.ex.hint };
+  v.ex = exerciseInstructionsForDisplay(v.exId, v.ex, catalog().exercises[v.exId]);
   v.topic = v.session ? v.session.topic : (v.exId === 'coach'
     ? ((state.coach_next && state.coach_next.question) || catalog().first_coach_question)
     : pickTopic(v.exId));

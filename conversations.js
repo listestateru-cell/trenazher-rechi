@@ -125,7 +125,9 @@ window.TrainerConversations = (() => {
       for (const value of messages.values()) if (value.button) value.button.disabled = !!recorder || !!stopping || openingMic;
     }
     function voiceFor(message) {
-      const player = h('audio', { preload: 'none', src: url(`${endpoint(session.id)}/conversation/voice/${enc(message.id)}`) });
+      const voicePath = `${endpoint(session.id)}/conversation/voice/${enc(message.id)}`;
+      let sourceVersion = 0;
+      const player = h('audio', { preload: 'none', src: url(voicePath) });
       const note = h('p', { class: 'small soft', role: 'status', hidden: true });
       const play = button('Послушать реплику', async () => {
         if (recorder || stopping || openingMic) return;
@@ -135,9 +137,10 @@ window.TrainerConversations = (() => {
       play.prepend(icon('speaker'));
       async function playVoice() {
         if (!live() || recorder || stopping || openingMic) return;
+        const expectedSource = sourceVersion;
         pauseAudio(); note.hidden = true;
         try { if (player.error) player.load(); await player.play(); }
-        catch (_) { if (live()) { note.textContent = 'Нажмите «Послушать реплику», чтобы включить звук. Можно ответить и по тексту.'; note.hidden = false; } }
+        catch (_) { if (live() && expectedSource === sourceVersion) { note.textContent = 'Нажмите «Послушать реплику», чтобы включить звук. Можно ответить и по тексту.'; note.hidden = false; } }
       }
       player.addEventListener('play', () => play.replaceChildren(icon('pause'), 'Пауза'));
       player.addEventListener('pause', () => play.replaceChildren(icon('speaker'), 'Послушать реплику'));
@@ -147,7 +150,20 @@ window.TrainerConversations = (() => {
         note.textContent = 'Озвучка сейчас недоступна. Можно повторить её или ответить по тексту.'; note.hidden = false;
         play.replaceChildren(icon('speaker'), 'Повторить озвучку');
       });
-      return { player, button: play, note, play: playVoice };
+      function reconnect() {
+        const next = url(voicePath);
+        if (player.src === next) return;
+        const failed = !!player.error, wasPlaying = !player.paused;
+        sourceVersion++;
+        player.pause();
+        player.src = next;
+        player.load();
+        if (failed || wasPlaying) {
+          note.textContent = 'Подключение обновилось. Нажмите «Послушать реплику», чтобы включить звук.'; note.hidden = false;
+          play.replaceChildren(icon('speaker'), 'Послушать реплику');
+        }
+      }
+      return { player, button: play, note, play: playVoice, reconnect };
     }
     function drawMessages() {
       const list = conversation(session).messages || [];
@@ -382,7 +398,12 @@ window.TrainerConversations = (() => {
         break;
       }
     }
-    function onReconnect() { if (live() && !recorder && !stopping) refresh(); }
+    function onReconnect() {
+      if (!live()) return;
+      allowAutoVoice = false;
+      for (const item of messages.values()) if (item.reconnect) item.reconnect();
+      if (!recorder && !stopping) refresh();
+    }
     function beforeUnload(event) { if (recorder || stopping || pending) { event.preventDefault(); event.returnValue = ''; } }
     const scenario = conversation(session).scenario || {};
     const practiceTip = (conversation(session).practice || {}).source_tip || conversation(session).source_tip;

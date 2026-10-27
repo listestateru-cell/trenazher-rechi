@@ -578,7 +578,7 @@ async function route() {
     if (key === 'admin') adminEntry.setAttribute('aria-current', 'page');
     else adminEntry.removeAttribute('aria-current');
   }
-  const navKey = { ex: 'home', s: 'home', learn: 'home' }[key] || key;
+  const navKey = { ex: 'home', s: 'home', learn: 'home', conversation: 'home' }[key] || key;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   const root = $('#app');
   root.replaceChildren(h('div', { class: 'empty' }, h('div', { class: 'spinner', style: 'margin:0 auto' })));
@@ -589,6 +589,7 @@ async function route() {
     else if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
     else if (key === 'groups' && parts[2] === 'duels' && window.TrainerDuels) view = await TrainerDuels.view(ctx, parts, params);
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
+    else if (key === 'conversation' && window.TrainerConversations) view = await TrainerConversations.view(ctx, parts, params);
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);
@@ -731,6 +732,7 @@ async function HomeView(ctx) {
       h('div', { class: 'q' }, nextQ)),
     h('a', { class: 'btn', href: '#/ex/coach' }, icon('mic'), 'Ответить'));
 
+  const conversationCard = window.TrainerConversations ? await TrainerConversations.homeCard() : null;
   const cards = catalog().order.map((id) => {
     const ex = catalog().exercises[id];
     const last = lastByEx[id];
@@ -756,7 +758,7 @@ async function HomeView(ctx) {
     h('div', { class: 'ex-grid learning-kinds' }, LEARNING_KINDS.map((kind) => h('a', { class: 'ex-card', href: `#/learn/${kind.id}` },
       h('div', { class: 'icon' }, icon(kind.icon)), h('h3', null, kind.title), h('p', { class: 'soft small' }, kind.description), h('div', { class: 'meta' }, h('span', { class: 'chip' }, 'Сначала своя попытка'), h('span', null, 'без таймера'))))),
     h('div', { class: 'section-title' }, h('h2', null, 'Упражнения'), h('span', { class: 'muted' }, 'каждое — отдельный навык')),
-    h('div', { class: 'ex-grid' }, cards),
+    h('div', { class: 'ex-grid' }, cards, conversationCard),
     h('div', { class: 'note-row' },
       h('div', { class: 'card' }, h('h3', null, 'Быстро говорить'), h('p', { class: 'soft small' }, 'Произносить много слов за короткое время. Полезно, но не главное.')),
       h('div', { class: 'card' }, h('h3', null, 'Быстро мыслить'), h('p', { class: 'soft small' }, 'Находить нужные аргументы и формулировки без долгих пауз. Сюда — главный приоритет.')),
@@ -1008,6 +1010,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
   if (sess) { v.session = sess; v.exId = sess.exercise; }
+  if (sess && sess.exercise === 'conversation' && window.TrainerConversations) return TrainerConversations.view(ctx, ['conversation', sess.id], params, sess);
   if (sess && isLearningSession(sess)) return LearningSessionView(ctx, sess);
   if (sess && sess.group_duel && window.TrainerDuels) return TrainerDuels.review(ctx, sess);
   if (sess) await restorePendingTake();

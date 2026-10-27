@@ -45,3 +45,21 @@
   .conversation-recent-item { gap: 12px; padding: 16px; }
   .conversation-recent-item > span { display: none; }
 }
+
+/* Печатный ответ остаётся основным; голос включается отдельным действием. */
+.conversation-voice-preference { display: flex; align-items: center; gap: 10px; align-self: flex-start; min-height: 44px; cursor: pointer; color: var(--ink-2); font-size: 14px; }
+.conversation-voice-preference input { width: 20px; height: 20px; accent-color: var(--accent); flex-shrink: 0; }
+.conversation-answer-label { color: var(--ink); font-size: 18px !important; font-weight: 650; }
+.conversation-answer-input { display: block; width: 100%; min-height: 116px; resize: vertical; padding: 12px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; }
+.conversation-answer-input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.conversation-answer-input[readonly] { background: var(--surface-2); }
+.conversation-input-actions { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; }
+.conversation-input-actions > .btn { flex: 1 1 160px; }
+.conversation-input-mode { display: inline-block; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--line-2); font-weight: 400; }
+.conversation-audio-copy summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.conversation-audio-copy audio { width: 100%; margin: 10px 0; }
+.conversation-audio-copy p { margin-top: 8px; }
+.conversation-unmeasured .meter-note { margin-bottom: 0; }
+@media (max-width: 420px) {
+  .conversation-input-actions > .btn { flex-basis: 130px; padding-inline: 12px; }
+}

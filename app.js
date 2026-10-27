@@ -2774,6 +2774,9 @@ function takeAnalysis(rt, t, wordEls, player, onPractice) {
 }
 
 function meterRow(name, value, note, before) {
+  if (!Number.isFinite(value)) return h('div', { class: 'meter-row' },
+    h('div', { class: 'meter-top' }, h('span', { class: 'name' }, name), h('span', { class: 'v muted small' }, 'Нет данных')),
+    note ? h('div', { class: 'meter-note' }, note) : null);
   const pct = Math.max(0, Math.min(100, value * 10));
   return h('div', { class: 'meter-row' },
     h('div', { class: 'meter-top' }, h('span', { class: 'name' }, name), h('span', { class: 'v' }, f1(value), h('span', { class: 'muted small' }, ' / 10'))),
@@ -3131,7 +3134,10 @@ async function ProgressView(ctx) {
         h('p', { style: 'margin-top:14px' }, h('a', { class: 'btn', href: '#/' }, 'К упражнениям'))));
     return null;
   }
-  const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+  const avg = (arr) => {
+    const values = arr.filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+  };
   const first = done.slice(0, 5), recent = done.slice(-5);
   const avgFirst = avg(first.map((x) => x.summary.overall)), avgRecent = avg(recent.map((x) => x.summary.overall));
   const minutes = done.reduce((a, x) => a + (x.summary.speech_time || 0), 0) / 60;

@@ -54,12 +54,12 @@
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
-      const response = await nativeFetch(address, {
+      const response = await abortable(nativeFetch(address, {
         cache: 'no-store', mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer',
         redirect: 'error', signal: controller.signal,
-      });
+      }), controller.signal);
       if (!response.ok) throw new Error('Адрес компьютера пока недоступен.');
-      return await response.text();
+      return await abortable(response.text(), controller.signal);
     } finally { clearTimeout(timer); }
   }
 
@@ -92,6 +92,7 @@
     const restored = connectionFailed;
     connectionFailed = false;
     lastContact = Date.now();
+    clearTimeout(retryTimer); retryTimer = 0; retryCount = 0;
     note?.remove(); note = null;
     if (restored) window.dispatchEvent(new CustomEvent('trainer:connectionrestored', { detail: {} }));
   }
@@ -118,7 +119,7 @@
         if (await alive(endpoint)) return endpoint;
       } catch (_) { /* резервный источник или следующий цикл */ }
     }
-    throw new Error('Связи с Mac пока нет. Проверьте, что компьютер включён и тренажёр запущен.');
+    throw new Error('Пока не удалось подключиться к тренажёру. Проверьте интернет; подключение повторится автоматически.');
   }
 
   function element(tag, className, text) {
@@ -177,6 +178,16 @@
     note.querySelector('span').textContent = message;
   }
 
+  function scheduleRetry() {
+    if (retryTimer) return;
+    retryCount++;
+    const delay = Math.min(30000, 3000 * (2 ** Math.min(retryCount - 1, 4)));
+    retryTimer = setTimeout(() => {
+      retryTimer = 0;
+      if (!document.hidden) connectAndReady(true);
+    }, delay);
+  }
+
   async function reconnect(force = true) {
     if (!hosted) return base;
     if (connecting) return connecting;
@@ -202,14 +213,17 @@
         throw error;
       }
     })().catch(error => {
-      if (ready) connectionNote('Связь с Mac прервалась. Ответ остаётся на экране; отправку можно повторить после подключения.');
+      if (ready) {
+        connectionNote('Связь с тренажёром прервалась. Подключаемся снова. Ответ остаётся на экране; после подключения можно проверить отправку.');
+        scheduleRetry();
+      }
       throw error;
     }).finally(() => { connecting = null; });
     return connecting;
   }
 
   async function connectAndReady(force = false) {
-    clearTimeout(retryTimer);
+    clearTimeout(retryTimer); retryTimer = 0;
     if (!hosted) {
       ready = true; resolveReady({ base, key }); return;
     }
@@ -221,8 +235,7 @@
       if (!ready) { ready = true; cover?.remove(); resolveReady({ base, key }); }
     } catch (error) {
       if (!ready) showStatus(error.message, true);
-      retryCount++;
-      retryTimer = setTimeout(() => { if (!document.hidden) connectAndReady(true); }, Math.min(60000, 10000 * retryCount));
+      scheduleRetry();
     }
   }
 
@@ -330,7 +343,7 @@
         connectionSucceeded();
         return response;
       }
-      failure = new Error('Соединение с Mac прервалось.');
+      failure = new Error('Соединение с тренажёром прервалось.');
     } catch (error) {
       if (source.signal.aborted || !hosted) throw error;
       connectionFailed = true;
@@ -397,7 +410,7 @@
     } else history.replaceState(null, '', location.pathname + location.search + '#' + route);
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && Date.now() - lastContact > 60000) connectAndReady(false);
+    if (!document.hidden && (connectionFailed || Date.now() - lastContact > 60000)) connectAndReady(false);
   });
   if (hosted) setInterval(() => {
     if (ready && !document.hidden && Date.now() - lastContact > 60000) reconnect(false).catch(() => {});

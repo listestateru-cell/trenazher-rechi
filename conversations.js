@@ -18,6 +18,9 @@ window.TrainerConversations = (() => {
   const isWorking = session => ['processing', 'opponent_pending'].includes(conversation(session).phase)
     || ((session.analysis || {}).status === 'running' && ['finished', 'ready_for_analysis'].includes(conversation(session).phase));
   const scenarioTitle = session => (conversation(session).scenario || {}).title || session.title || 'Сложный разговор';
+  const difficultyNames = { 1: 'Мягкий', 2: 'Настойчивый', 3: 'Сильное давление' };
+  const difficultyTitle = level => difficultyNames[level] || '';
+  const customStory = session => conversation(session).scenario_id === 'custom' || !!(conversation(session).scenario || {}).custom;
 
   async function homeCard() {
     try {
@@ -25,7 +28,7 @@ window.TrainerConversations = (() => {
       if (!data.available) return null;
       return h('a', { class: 'ex-card conversation-entry', href: href() }, h('div', { class: 'icon' }, icon('ask')),
         h('h3', null, 'Сложный разговор'), h('p', { class: 'soft small' }, 'Откажите, ответьте на критику или обозначьте границу. Собеседник реагирует на ваши слова.'),
-        h('div', { class: 'meta' }, h('span', { class: 'chip' }, 'Диалог'), h('span', null, 'до трёх ответов · без таймера')));
+        h('div', { class: 'meta' }, h('span', { class: 'chip' }, 'Диалог'), h('span', null, 'до пяти ответов · без таймера')));
     } catch (_) { return null; }
   }
 
@@ -35,44 +38,156 @@ window.TrainerConversations = (() => {
   }
 
   async function catalogView(ctx) {
+    const owner = window.TrainerDrafts && TrainerDrafts.profile();
+    let busy = false, destroyed = false, saveQueue = Promise.resolve(), queuedSetup = null;
+    const live = () => !destroyed && ctx.alive() && (!owner || !window.TrainerDrafts || owner === TrainerDrafts.profile());
     const data = await api('/api/conversations');
-    let selected = (data.scenarios || [])[0], busy = false, destroyed = false;
+    const draftKey = 'conversation:setup';
+    const stored = window.TrainerDrafts && (TrainerDrafts.getText(draftKey) || await TrainerDrafts.get('text:' + draftKey, owner)) || {};
+    if (!live()) return { destroy() { destroyed = true; } };
+    const categories = (data.categories || data.scenarios || []).map(item => ({ ...item, situations: item.situations && item.situations.length ? item.situations : [item] }));
+    const difficulties = (data.difficulties || []).length ? data.difficulties : [
+      { level: 1, title: difficultyTitle(1), description: 'Собеседник уточняет и допускает разумную договорённость.' },
+      { level: 2, title: difficultyTitle(2), description: 'Собеседник возражает, повторяет просьбу иначе и может выразить недовольство.' },
+      { level: 3, title: difficultyTitle(3), description: 'Собеседник может обидеться или давить чувством вины; угроз и унижения нет.' }];
+    let category = categories.find(item => item.id === stored.category_id) || categories[0];
+    let selected = category && (category.situations.find(item => (item.variant_id || item.id) === stored.variant_id) || category.situations[0]);
+    let randomSituation = !stored.variant_id || !category || !category.situations.some(item => (item.variant_id || item.id) === stored.variant_id);
+    let mode = stored.mode === 'custom' ? 'custom' : 'catalog';
+    let difficulty = difficulties.some(item => item.level === Number(stored.difficulty)) ? Number(stored.difficulty) : 1;
     const root = h('section', { class: 'conversation-view stack' });
     const error = h('p', { class: 'conversation-error', role: 'alert', hidden: true });
+    const savedNotice = h('p', { class: 'small soft', role: 'status', hidden: true });
     const details = h('div', { class: 'conversation-scenario-details stack' });
     const start = h('button', { type: 'button', class: 'btn', disabled: !selected, onclick: begin }, 'Начать разговор', icon('arrow'));
-    const selectId = 'conversation-scenario';
-    const select = h('select', { id: selectId, onchange: () => {
-      selected = (data.scenarios || []).find(item => item.id === select.value); drawDetails();
-    } }, (data.scenarios || []).map(item => h('option', { value: item.id }, item.title)));
+    const categorySelect = h('select', { id: 'conversation-category', onchange: () => {
+      if (!live() || busy) return;
+      category = categories.find(item => item.id === categorySelect.value); selected = category && category.situations[0]; randomSituation = true;
+      drawSituations(); drawDetails(); persist();
+    } }, categories.map(item => h('option', { value: item.id }, item.title)));
+    const situationSelect = h('select', { id: 'conversation-scenario', onchange: () => {
+      if (!live() || busy) return;
+      randomSituation = situationSelect.value === '__random__';
+      selected = category && (randomSituation ? category.situations[0] : category.situations.find(item => (item.variant_id || item.id) === situationSelect.value)); drawDetails(); persist();
+    } });
+    const difficultyHelp = h('p', { class: 'small soft conversation-difficulty-help', id: 'conversation-difficulty-help' });
+    const difficultySelect = h('select', { id: 'conversation-difficulty', 'aria-describedby': 'conversation-difficulty-help', onchange: () => {
+      if (!live() || busy) return;
+      difficulty = Number(difficultySelect.value); drawDifficulty(); persist();
+    } }, difficulties.map(item => h('option', { value: String(item.level) }, item.title)));
+    const customFields = {};
+    const customErrors = {};
+    function customField(name, label, min, max, rows, help) {
+      const id = 'conversation-custom-' + name;
+      const input = h(rows ? 'textarea' : 'input', { id, class: 'conversation-setup-input', ...(rows ? { rows } : { type: 'text' }),
+        minlength: min || 0, maxlength: max, required: min > 0, 'aria-describedby': id + '-help ' + id + '-error', oninput: () => {
+          if (!live() || busy) return;
+          input.setAttribute('aria-invalid', 'false'); customErrors[name].hidden = true; error.hidden = true; persist();
+        } });
+      input.value = (stored.custom || {})[name] || '';
+      customFields[name] = input;
+      customErrors[name] = h('p', { id: id + '-error', class: 'small conversation-error', hidden: true });
+      return h('div', { class: 'field' }, h('label', { for: id }, label), input,
+        h('p', { id: id + '-help', class: 'small soft' }, help), customErrors[name]);
+    }
+    const optional = h('details', { class: 'conversation-setup-optional', open: !!stored.optional_open,
+      ontoggle: () => { if (live() && !busy) persist(); } }, h('summary', null, 'Последняя реплика и предыстория'), h('div', { class: 'stack' },
+      customField('opening', 'Последняя реплика собеседника · необязательно', 0, 800, 2, 'Если разговор уже начался, приведите его последнюю реплику дословно. Если оставить поле пустым, собеседник начнёт с нейтрального вопроса.'),
+      customField('history', 'Что вы уже обсудили · необязательно', 0, 4000, 3, 'Опишите важные договорённости или вставьте предыдущие реплики. До 4000 знаков.')));
+    const customPanel = h('div', { class: 'stack' },
+      customField('context', 'Что произошло', 20, 8000, 4, 'Опишите ситуацию и важные обстоятельства. От 20 до 8000 знаков.'),
+      customField('goal', 'Чего вы хотите добиться', 5, 1000, 2, 'Какой результат разговора вам нужен? От 5 до 1000 знаков.'),
+      customField('opponent_role', 'Кто ваш собеседник', 2, 120, 0, 'Например, руководитель, друг или интервьюер. От 2 до 120 знаков.'), optional);
+    const catalogPanel = h('div', { class: 'stack' }, h('div', { class: 'conversation-setup-grid' },
+      h('div', { class: 'field' }, h('label', { for: 'conversation-category' }, 'Категория'), categorySelect),
+      h('div', { class: 'field' }, h('label', { for: 'conversation-scenario' }, 'Ситуация'), situationSelect)), details);
+    const catalogMode = h('button', { type: 'button', class: 'btn ghost', onclick: () => changeMode('catalog') }, 'Готовая ситуация');
+    const customMode = h('button', { type: 'button', class: 'btn ghost', onclick: () => changeMode('custom') }, 'Своя история');
+    const controls = [categorySelect, situationSelect, difficultySelect, catalogMode, customMode, ...Object.values(customFields)];
+    categorySelect.value = category && category.id || ''; difficultySelect.value = String(difficulty);
+    function setupValue() {
+      return { mode, category_id: category && category.id, variant_id: !randomSituation && selected ? selected.variant_id || selected.id : null, difficulty,
+        custom: Object.fromEntries(Object.entries(customFields).map(([key, input]) => [key, input.value])), optional_open: !!optional.open };
+    }
+    function persist() {
+      if (!live() || !window.TrainerDrafts) return;
+      const value = setupValue(); TrainerDrafts.setText(draftKey, value);
+      queuedSetup = value;
+      saveQueue = saveQueue.then(async () => {
+        if (!queuedSetup) return;
+        const snapshot = queuedSetup; queuedSetup = null;
+        const saved = await TrainerDrafts.put('text:' + draftKey, { kind: 'conversation-setup', ...snapshot }, owner);
+        if (live()) { savedNotice.hidden = saved.durable; savedNotice.textContent = 'Браузер не смог сохранить настройки надолго. Не закрывайте страницу, пока заполняете свою историю.'; }
+      }).catch(() => null);
+    }
+    function changeMode(next) {
+      if (!live() || busy) return;
+      mode = next; drawMode(); persist(); error.hidden = true;
+    }
+    function drawMode() {
+      catalogPanel.hidden = mode !== 'catalog'; customPanel.hidden = mode !== 'custom';
+      catalogMode.setAttribute('aria-pressed', mode === 'catalog' ? 'true' : 'false');
+      customMode.setAttribute('aria-pressed', mode === 'custom' ? 'true' : 'false');
+      start.disabled = mode === 'catalog' && !selected;
+    }
+    function drawSituations() {
+      situationSelect.replaceChildren(h('option', { value: '__random__' }, 'Новая случайная ситуация'), ...(category ? category.situations : []).map(item => h('option', { value: item.variant_id || item.id }, item.title)));
+      situationSelect.value = randomSituation ? '__random__' : selected && (selected.variant_id || selected.id) || '';
+    }
+    function drawDifficulty() {
+      difficultyHelp.textContent = (difficulties.find(item => item.level === difficulty) || {}).description || '';
+    }
     function drawDetails() {
+      if (randomSituation && category) {
+        details.replaceChildren(h('p', { class: 'soft' }, 'Ситуаций в этой категории: ', category.situations.length,
+          '. При начале разговора тренажёр выберет одну из них, по возможности ещё не пройденную вами. Контекст и цель появятся перед первым ответом.'));
+        return;
+      }
       details.replaceChildren(...(selected ? [h('p', null, selected.context),
         h('div', { class: 'conversation-goal' }, h('h3', null, 'Ваша цель'), h('p', null, selected.user_goal)),
         h('p', { class: 'small soft' }, 'Собеседник: ', selected.opponent_role)] : []));
     }
+    function validateCustom() {
+      const limits = { context: [20, 8000, 'Опишите ситуацию хотя бы в 20 знаках.'], goal: [5, 1000, 'Добавьте цель разговора, хотя бы 5 знаков.'], opponent_role: [2, 120, 'Укажите, с кем вы будете разговаривать.'], opening: [0, 800], history: [0, 4000] };
+      let first;
+      for (const [name, input] of Object.entries(customFields)) {
+        const [min, max, missing] = limits[name], length = input.value.trim().length;
+        const message = length < min ? missing : length > max ? `В этом поле должно быть не больше ${max} знаков.` : '';
+        input.setAttribute('aria-invalid', message ? 'true' : 'false'); customErrors[name].hidden = !message; customErrors[name].textContent = message;
+        if (message && !first) first = input;
+      }
+      if (first) { if (first === customFields.opening || first === customFields.history) optional.open = true; if (first.focus) first.focus(); return false; }
+      return true;
+    }
     async function begin() {
-      if (busy || !selected) return;
-      busy = true; start.disabled = select.disabled = true; error.hidden = true; start.textContent = 'Открываю разговор…';
+      if (!live() || busy || (mode === 'catalog' && !selected) || (mode === 'custom' && !validateCustom())) return;
+      persist();
+      const body = mode === 'custom'
+        ? { custom: Object.fromEntries(Object.entries(customFields).map(([key, input]) => [key, input.value.trim()])), difficulty }
+        : { scenario_id: category.id, ...(!randomSituation ? { variant_id: selected.variant_id || selected.id } : {}), difficulty };
+      busy = true; start.disabled = true; controls.forEach(control => { control.disabled = true; }); error.hidden = true; start.textContent = 'Открываю разговор…';
       try {
-        const saved = await api('/api/conversations', { method: 'POST', body: { scenario_id: selected.id } });
-        if (!destroyed && ctx.alive()) { autoVoiceSessions.add(saved.id); location.hash = href(saved.id); }
-      } catch (caught) { if (!destroyed && ctx.alive()) { error.textContent = caught.message; error.hidden = false; } }
-      finally { busy = false; if (!destroyed && ctx.alive()) { start.disabled = select.disabled = false; start.replaceChildren('Начать разговор', icon('arrow')); } }
+        const saved = await api('/api/conversations', { method: 'POST', body });
+        if (live()) { autoVoiceSessions.add(saved.id); location.hash = href(saved.id); }
+      } catch (caught) { if (live()) { error.textContent = caught.message; error.hidden = false; } }
+      finally { busy = false; if (live()) { controls.forEach(control => { control.disabled = false; }); drawMode(); start.replaceChildren('Начать разговор', icon('arrow')); } }
     }
     const recent = data.recent || [];
     root.append(h('a', { class: 'back', href: '#/' }, icon('back'), 'К упражнениям'),
       h('header', { class: 'conversation-heading' }, h('p', { class: 'label' }, 'Практика диалога'), h('h1', null, 'Сложный разговор'),
         h('p', { class: 'soft' }, 'Собеседник возражает и задаёт вопросы. Отвечайте своими словами; после разговора тренер разберёт ваши реплики.')));
     if (data.available) {
-      drawDetails();
-      root.append(h('section', { class: 'card stack' }, h('h2', null, 'Выберите ситуацию'),
-        h('div', { class: 'field' }, h('label', { for: selectId }, 'Сценарий'), select), details,
-        h('p', { class: 'small soft' }, 'Обычно три ответа. Пишите или говорите; можно закончить раньше и получить разбор.'), start, error));
+      drawSituations(); drawDetails(); drawDifficulty(); drawMode();
+      root.append(h('section', { class: 'card stack conversation-setup' }, h('h2', null, 'О чём поговорим'),
+        h('div', { class: 'conversation-setup-modes', role: 'group', 'aria-label': 'Как выбрать ситуацию' }, catalogMode, customMode), catalogPanel, customPanel,
+        h('div', { class: 'field' }, h('label', { for: 'conversation-difficulty' }, 'Сложность собеседника'), difficultySelect, difficultyHelp),
+        h('p', { class: 'small soft' }, 'До пяти ваших ответов. Пишите или говорите; можно закончить раньше и получить разбор.'), start, error, savedNotice));
     } else root.append(h('div', { class: 'card' }, h('h2', null, 'Разговоры для взрослых'),
       h('p', { class: 'soft' }, data.reason || 'В выбранной группе этот режим недоступен.'), h('a', { class: 'btn ghost', href: '#/' }, 'К упражнениям')));
     if (recent.length) {
       const items = recent.map(item => h('a', { class: 'card conversation-recent-item', href: href(item.session_id) },
-        h('div', null, h('h3', null, item.title || 'Сложный разговор'), h('p', { class: 'small soft' }, phaseNames[item.phase] || 'Сохранённый разговор', ' · ответов: ', item.user_turns || 0)),
+        h('div', null, h('h3', null, item.title || 'Сложный разговор'), difficultyTitle(item.difficulty) ? h('p', { class: 'small soft' }, 'Уровень: ', (difficulties.find(level => level.level === item.difficulty) || {}).title || difficultyTitle(item.difficulty)) : null,
+          h('p', { class: 'small soft' }, phaseNames[item.phase] || 'Сохранённый разговор', ' · ответов: ', item.user_turns || 0)),
         h('span', { class: 'small soft' }, item.created ? new Date(item.created).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''), icon('arrow')));
       root.append(h('section', { class: 'stack' }, h('h2', null, 'Ваши разговоры'), h('div', { class: 'conversation-recent' }, items)));
     }
@@ -283,7 +398,7 @@ window.TrainerConversations = (() => {
       if (busy) return 'Сохраняю…';
       const phase = conversation(session).phase;
       if ((session.analysis || {}).status === 'running') return 'Тренер разбирает разговор. История уже сохранена.';
-      if (phase === 'awaiting_user') return `Ваш ответ ${answerCount() + 1} из ${conversation(session).max_responses || 3}. Пишите или отвечайте голосом.`;
+      if (phase === 'awaiting_user') return `Ваш ответ ${answerCount() + 1} из ${conversation(session).max_responses || 5}. Пишите или отвечайте голосом.`;
       return phaseNames[phase] || 'Разговор сохранён';
     }
     function draw() {
@@ -451,7 +566,10 @@ window.TrainerConversations = (() => {
           h('div', null, h('p', { class: 'label' }, 'Ваша реплика'), h('blockquote', null, improved.quote)),
           h('div', null, h('p', { class: 'label' }, 'Вариант с тем же смыслом'), h('p', null, improved.text)),
           improved.why ? h('section', { class: 'stronger-explanation', 'aria-label': 'Как устроен этот ответ' }, h('h3', null, 'Как устроен этот ответ'), h('p', null, improved.why)) : null) : null,
-        h('div', { class: 'row' }, button('Повторить этот разговор', () => mutate('repeat'), true), button('Тот же совет в другой ситуации', () => mutate('transfer'))));
+        h('div', { class: 'row' }, button('Повторить этот разговор', () => mutate('repeat'), true),
+          Number.isInteger(conversation(session).difficulty) && conversation(session).difficulty < 3
+            ? button('Попробовать следующий уровень', () => mutate('repeat', { difficulty: conversation(session).difficulty + 1 })) : null,
+          !customStory(session) ? button('Тот же совет в другой ситуации', () => mutate('transfer')) : null));
       review.replaceChildren(standard, qualitative, practice);
     }
     async function refresh() {
@@ -467,11 +585,11 @@ window.TrainerConversations = (() => {
       const queuedReview = conversation(session).phase === 'ready_for_analysis' && (session.analysis || {}).status === 'waiting';
       if (isWorking(session) || queuedReview || (((pending && pending.error) || (textPending && textPending.error)) && pendingChecks++ < 3)) pollTimer = setTimeout(refresh, 2000);
     }
-    async function mutate(verb) {
+    async function mutate(verb, body = {}) {
       if (!live() || busy || recorder || stopping || pending || textSending || textPending) return;
       busy = true; sessionVersion++; error = ''; pauseAudio(); draw();
       try {
-        const fresh = await api(actionPath(verb), { method: 'POST', body: {} });
+        const fresh = await api(actionPath(verb), { method: 'POST', body });
         if (!live()) return;
         if (['repeat', 'transfer'].includes(verb)) { autoVoiceSessions.add(fresh.id); location.hash = href(fresh.id); }
         else { session = fresh; allowAutoVoice = verb === 'retry'; draw(); }
@@ -588,11 +706,18 @@ window.TrainerConversations = (() => {
     }
     function beforeUnload(event) { if (recorder || stopping || pending || textSending) { event.preventDefault(); event.returnValue = ''; } }
     const scenario = conversation(session).scenario || {};
+    const level = conversation(session).difficulty;
+    const levelProfile = conversation(session).difficulty_profile || {};
+    const levelTitle = levelProfile.title || difficultyTitle(level);
+    const levelDescription = levelProfile.description;
     const practiceTip = (conversation(session).practice || {}).source_tip || conversation(session).source_tip;
-    contextBox.append(h('summary', null, 'Контекст и ваша цель'), h('div', { class: 'stack' }, h('p', null, scenario.context || session.topic),
+    contextBox.append(h('summary', null, 'Контекст и ваша цель'), h('div', { class: 'stack' }, h('p', { class: 'conversation-saved-context' }, scenario.context || session.topic),
       h('div', { class: 'conversation-goal' }, h('h2', null, 'Ваша цель'), h('p', null, scenario.user_goal)), h('p', { class: 'small soft' }, 'Собеседник: ', scenario.opponent_role),
+      scenario.history ? h('div', null, h('h3', null, 'Что вы уже обсудили'), h('p', { class: 'conversation-saved-context' }, scenario.history)) : null,
+      (conversation(session).opening_source || scenario.opening_source) === 'neutral_default' ? h('p', { class: 'small soft' }, 'Вы не указали последнюю реплику. Собеседник начал с нейтрального вопроса.') : null,
       practiceTip ? h('div', { class: 'callout' }, h('p', { class: 'label' }, 'Совет из предыдущего разговора'), h('p', null, practiceTip)) : null));
-    root.append(h('a', { class: 'back', href: href() }, icon('back'), 'К ситуациям'), h('header', { class: 'conversation-heading' }, h('p', { class: 'label' }, 'Сложный разговор'), title, stage),
+    root.append(h('a', { class: 'back', href: href() }, icon('back'), 'К ситуациям'), h('header', { class: 'conversation-heading' }, h('p', { class: 'label' }, customStory(session) ? 'Сложный разговор · своя история' : 'Сложный разговор'), title,
+      levelTitle ? h('p', { class: 'small soft conversation-session-level' }, 'Уровень: ', levelTitle, levelDescription ? '. ' + levelDescription : '') : null, stage),
       voicePreference, contextBox, errorBox, history, composer, audioCopies, review);
     render(ctx, root);
     await restoreAudio(); loadTextDraft(); await restoreTextBackup(); await reconcileText();

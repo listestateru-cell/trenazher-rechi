@@ -9,6 +9,22 @@
 .conversation-context summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .conversation-context[open] summary { margin-bottom: 16px; }
 .conversation-view select { width: 100%; max-width: 100%; min-width: 0; min-height: 48px; font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.conversation-setup-modes { display: flex; flex-wrap: wrap; gap: 10px; }
+.conversation-setup-modes > .btn { flex: 1 1 160px; }
+.conversation-setup-modes > [aria-pressed="true"] { border-color: var(--accent); color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--accent); }
+.conversation-setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.conversation-setup .field { min-width: 0; }
+.conversation-setup .field > .small { margin: 7px 0 0; line-height: 1.5; }
+.conversation-setup .field > label { display: block; margin-bottom: 8px; }
+.conversation-setup-input { display: block; box-sizing: border-box; width: 100%; min-height: 48px; max-width: 100%; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; line-height: 1.5; padding: 12px 14px; }
+.conversation-setup-input[aria-invalid="true"] { border-color: var(--bad-ink); }
+.conversation-setup-input:focus-visible, .conversation-setup-optional summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.conversation-setup-optional { border-top: 1px solid var(--line); padding-top: 8px; }
+.conversation-setup-optional summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.conversation-setup-optional[open] summary { margin-bottom: 12px; }
+.conversation-saved-context, .conversation-scenario-details > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-difficulty-help { min-height: 1.5em; }
+.conversation-session-level { line-height: 1.5; }
 .conversation-recent { display: grid; gap: 12px; }
 .conversation-recent-item { display: flex; align-items: center; gap: 16px; color: var(--ink); }
 .conversation-recent-item > div { flex: 1; min-width: 0; }
@@ -44,6 +60,7 @@
   .conversation-composer .row > .btn { flex: 1 1 180px; }
   .conversation-recent-item { gap: 12px; padding: 16px; }
   .conversation-recent-item > span { display: none; }
+  .conversation-setup-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Печатный ответ остаётся основным; голос включается отдельным действием. */

@@ -45,14 +45,13 @@ window.TrainerLessons = (() => {
     if (kindId === 'retell') {
       const launch = button('Получить текст', () => start(), true); controls.push(launch);
       render(ctx, h('div', { class: 'lesson-page' }, h('a', { class: 'back', href: '#/learn' }, icon('back'), 'Мысль и слово'),
-        h('h1', null, meta.title), h('p', { class: 'soft learning-intro' }, meta.description),
+        h('h1', null, meta.title),
         h('section', { class: 'card lesson-blind-start' }, h('span', { class: 'chip' }, 'Около пяти минут чтения'),
           h('h2', null, 'Новый отрывок'),
-          h('p', null, 'Приложение само выберет текст. Он откроется после начала занятия.'),
-          h('p', null, 'Читайте в своём темпе. Автор и название произведения будут под текстом.'),
-          h('p', null, 'Когда закончите читать, текст скроется. Расскажите, что запомнили, голосом или письменно. Время пересказа не ограничено.'),
+          h('p', null, 'Приложение выберет текст для вас. Автор и произведение будут в конце.'),
           selected.resumable ? h('a', { class: 'btn ghost', href: `#/s/${enc(selected.resumable)}` }, 'Продолжить начатый пересказ', icon('arrow')) : null,
-          error, launch)));
+          error, launch,
+          h('p', { class: 'small soft' }, 'После чтения текст скроется. Перескажите его по памяти, голосом или письменно. Время пересказа не ограничено.'))));
       return null;
     }
     const items = list(selected.items).map(item => {

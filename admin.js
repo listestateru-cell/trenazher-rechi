@@ -20,10 +20,27 @@ window.TrainerAdmin = (() => {
 
   function exerciseTitle(session) {
     return session.title || ((catalog().exercises || {})[session.exercise] || {}).title
-      || ({ clarify: 'Уточни расплывчатую мысль', synonyms: 'Синонимы по смыслу', lexicon: 'Слово из классики' }[session.learning_kind || session.exercise]) || 'Занятие';
+      || ({ clarify: 'Уточни расплывчатую мысль', synonyms: 'Синонимы по смыслу', lexicon: 'Слово из классики', lesson_thought: 'Собери понятную мысль', lesson_retell: 'Пересказ классики' }[session.learning_kind || session.exercise]) || 'Занятие';
+  }
+
+  function lessonStage(lesson, stage = lesson.stage) {
+    if (lesson.kind === 'retell') return 'Пересказ отрывка';
+    return ['Найти разрыв смысла', 'Собрать рассказ из фактов', 'Применить на новой теме'][stage] || `Этап ${Number(stage) + 1}`;
   }
 
   function statusOf(session) {
+    if (session.lesson) {
+      const lesson = session.lesson;
+      const attempts = list(lesson.attempts).filter((attempt) => attempt.stage === lesson.stage);
+      const latest = attempts[attempts.length - 1];
+      if (lesson.phase === 'complete') return { text: 'Урок завершён', kind: 'good' };
+      if (latest && latest.status === 'processing') return { text: 'Речь распознаётся', kind: 'warn' };
+      if ((latest && latest.status === 'reviewing') || lesson.phase === 'reviewing') return { text: 'Тренер проверяет ответ', kind: 'warn' };
+      if (latest && latest.status === 'error') return { text: 'Проверка не завершилась · ответ сохранён', kind: 'bad' };
+      if (lesson.phase === 'reading') return { text: 'Чтение отрывка', kind: '' };
+      if (lesson.phase === 'review') return { text: latest && latest.review && latest.review.passed ? 'Этап выполнен' : 'Ответ разобран · можно доработать', kind: latest && latest.review && latest.review.passed ? 'good' : '' };
+      return { text: `Этап ${Number(lesson.stage || 0) + 1} из ${lesson.stage_count || 1}`, kind: '' };
+    }
     const analysis = session.analysis || {};
     const takes = list(session.takes);
     const count = Array.isArray(session.plan) ? session.plan.length : Number(session.plan) || 0;
@@ -157,6 +174,7 @@ window.TrainerAdmin = (() => {
             h('div', { class: 'admin-progress-facts' }, h('p', null, h('span', { class: 'soft' }, 'Последняя сохранённая активность: '), date(stats.last_activity)),
               h('p', null, h('span', { class: 'soft' }, 'Последняя оценка: '), stats.last_score == null ? 'Пока нет' : `${f1(stats.last_score)} / 10`),
               h('p', null, h('span', { class: 'soft' }, '«Мысль и слово»: '), `выполнено заданий ${stats.learning_completed || 0}, сохранено ответов ${stats.thought_attempts || 0}`),
+              h('p', null, h('span', { class: 'soft' }, 'Пошаговые уроки: '), `завершено ${stats.lesson_completed || 0}, сохранено ответов ${stats.lesson_attempts || 0}, разборов ${stats.lesson_reviews || 0}`),
               h('p', null, h('span', { class: 'soft' }, 'Уровень вопросов тренера: '), state.coach_level || 1)),
             h('div', { class: 'admin-today' }, h('div', { class: 'row' }, h('h3', null, 'Программа сегодня'), h('span', { class: 'chip num' }, `${program.doneCount} из ${program.steps.length}`)),
               program.start ? h('p', { class: 'small soft' }, `День ${Math.max(1, program.dayN)} · начало ${new Date(program.start + 'T12:00:00').toLocaleDateString('ru-RU')}`) : h('p', { class: 'small soft' }, 'Программа ещё не начата.'),
@@ -188,12 +206,62 @@ window.TrainerAdmin = (() => {
             analysis.error ? h('p', { class: 'admin-error' }, analysis.error) : null,
             analysis.refresh_error ? h('p', { class: 'small soft' }, 'Повторный разбор не завершился. Ниже — сохранённый результат.') : null),
           result ? coachCard(result) : null,
+          session.lesson ? lessonCard(session) : null,
           list(session.takes).some((take) => take.status !== 'missing') ? h('div', { class: 'admin-section-heading' }, h('h2', null, 'Записи и расшифровки')) : null,
           list(session.takes).map((take, index) => take.status === 'missing' ? null : takeCard(session, take, index, analysis)),
           thoughts.length ? h('div', { class: 'admin-section-heading' }, h('h2', null, session.learning_kind ? 'Учебные задания и ответы' : 'Работа над формулировками')) : null,
           thoughts.map((thought, index) => thoughtCard(session, thought, index)),
-          !list(session.takes).length && !thoughts.length ? h('div', { class: 'card admin-empty' }, h('h2', null, 'Ответов ещё нет'), h('p', { class: 'soft' }, 'Занятие создано. Отправленных записей и текстовых ответов пока нет.')) : null,
+          !session.lesson && !list(session.takes).length && !thoughts.length ? h('div', { class: 'card admin-empty' }, h('h2', null, 'Ответов ещё нет'), h('p', { class: 'soft' }, 'Занятие создано. Отправленных записей и текстовых ответов пока нет.')) : null,
         ]];
+    }
+
+    function lessonReview(review) {
+      const criterionNames = { core: 'Главная мысль', relations: 'Связи между мыслями', accuracy: 'Точность содержания' };
+      const criterionStatus = { clear: 'Понятно', partial: 'Передано частично', missing: 'Не выражено', distorted: 'Смысл изменён' };
+      const unitStatus = { preserved: 'Передано', partial: 'Передано частично', missing: 'Не передано', distorted: 'Смысл изменён' };
+      return h('div', { class: 'admin-review' }, h('h5', null, 'Разбор тренера'),
+        h('p', { class: 'admin-body-text' }, review.summary),
+        list(review.strengths).length ? h('div', null, h('h5', null, 'Что получилось'), h('ul', { class: 'list good' }, review.strengths.map((value) => h('li', null, value)))) : null,
+        list(review.improvements).length ? h('div', null, h('h5', null, 'Что доработать'), h('ul', { class: 'list grow' }, review.improvements.map((value) => h('li', null, value)))) : null,
+        Object.entries(criterionNames).map(([key, label]) => {
+          const criterion = (review.criteria || {})[key];
+          return criterion ? h('div', { class: 'callout' }, h('div', { class: 'label' }, `${label} · ${criterionStatus[criterion.status] || 'Нужна проверка'}`), h('p', { class: 'admin-body-text' }, criterion.comment)) : null;
+        }),
+        Number.isInteger(review.coverage_count) && Number.isInteger(review.total) && review.total > 0 ? h('p', { class: 'small soft' }, `Полностью передано смысловых опор: ${review.coverage_count} из ${review.total}.${Number.isInteger(review.partial_count) && review.partial_count > 0 ? ` Частично: ${review.partial_count}.` : ''}`) : null,
+        list(review.semantic_units).length ? h('details', { class: 'admin-reference' }, h('summary', null, 'Сопоставление смысла с ответом'), review.semantic_units.map((unit) => h('div', { class: 'callout' }, h('div', { class: 'label' }, unitStatus[unit.status] || 'Нужна проверка'), h('p', null, unit.label || unit.comment), unit.evidence ? h('blockquote', { class: 'admin-body-text' }, unit.evidence) : null, unit.label && unit.comment ? h('p', { class: 'small soft' }, unit.comment) : null))) : null,
+        review.structure_explanation ? h('div', { class: 'callout' }, h('div', { class: 'label' }, 'Как устроен ответ'), h('p', { class: 'admin-body-text' }, review.structure_explanation)) : null,
+        review.next_tip ? h('div', { class: 'callout' }, h('div', { class: 'label' }, 'Совет на следующую попытку'), h('p', { class: 'admin-body-text' }, review.next_tip)) : null);
+    }
+
+    function lessonCard(session) {
+      const lesson = session.lesson, current = lesson.current || {}, attempts = list(lesson.attempts);
+      const citation = current.citation || {};
+      const sourceText = lesson.source_text || (lesson.kind === 'retell' && lesson.phase === 'reading' ? current.text : null);
+      return h('article', { class: 'card admin-thought', 'data-admin-lesson': lesson.kind },
+        h('div', { class: 'card-head' }, h('h2', null, 'Ход урока'), h('span', { class: 'chip' }, `Этап ${Number(lesson.stage || 0) + 1} из ${lesson.stage_count || 1}`)),
+        h('p', null, current.title || lessonStage(lesson)),
+        current.task ? h('div', { class: 'callout' }, h('div', { class: 'label' }, 'Текущее условие'), h('p', { class: 'admin-body-text' }, current.task)) : null,
+        lesson.kind === 'thought' && (current.text || list(current.facts).length) ? h('details', { class: 'admin-reference' }, h('summary', null, 'Материалы текущего этапа'), current.context ? h('p', { class: 'admin-body-text' }, current.context) : null, current.text ? h('p', { class: 'admin-body-text' }, current.text) : null, list(current.facts).length ? h('ul', { class: 'list' }, current.facts.map((fact) => h('li', null, typeof fact === 'string' ? fact : fact.text))) : null, current.audience ? h('p', { class: 'small soft' }, `Адресат: ${current.audience}`) : null) : null,
+        lesson.kind === 'retell' ? h('div', { class: 'admin-original' }, h('h4', null, 'Литературный отрывок'),
+          citation.author || citation.work ? h('p', null, [citation.author, citation.work].filter(Boolean).join(' · ')) : null,
+          citation.location ? h('p', { class: 'small soft' }, citation.location) : null,
+          citation.excerpt_label ? h('p', { class: 'small soft' }, citation.excerpt_label) : null,
+          current.context ? h('p', { class: 'admin-body-text' }, current.context) : null,
+          /^https?:\/\//i.test(citation.source_url || '') ? h('a', { href: citation.source_url, target: '_blank', rel: 'noopener noreferrer' }, citation.source_label || 'Источник текста') : null,
+          h('p', { class: 'small soft' }, `Чтений отрывка: ${lesson.reading_count || 1}`),
+          sourceText ? h('details', { class: 'admin-reference' }, h('summary', null, 'Текст отрывка'), h('p', { class: 'admin-body-text' }, sourceText)) : h('p', { class: 'small soft' }, 'Источник скрыт на этапе самостоятельного пересказа.')) : null,
+        h('div', { class: 'admin-attempts' }, h('h4', null, `Сохранённые ответы · ${attempts.length}`), attempts.length ? attempts.map((attempt, index) => {
+          const review = attempt.review;
+          return h('section', { class: 'admin-attempt', 'data-admin-lesson-attempt': attempt.id },
+            h('div', { class: 'row' }, h('h5', null, `Вариант ${index + 1} · ${attempt.task_title || lessonStage(lesson, attempt.stage)}`), h('span', { class: `chip ${review && review.passed ? 'good' : attempt.status === 'error' ? 'bad' : ''}` }, ({ processing: 'Распознаётся', reviewing: 'Проверяется', error: 'Ответ сохранён · ошибка проверки' }[attempt.status] || (review ? review.passed ? 'Этап выполнен' : 'Можно доработать' : 'Ответ сохранён')))),
+            h('p', { class: 'small soft' }, `${date(attempt.created, true)} · ${attempt.input_kind === 'audio' ? 'Голосовой ответ' : 'Текстовый ответ'}`),
+            attempt.task ? h('details', { class: 'admin-reference' }, h('summary', null, 'Условие этой попытки'), h('p', { class: 'admin-body-text' }, attempt.task), attempt.condition && attempt.condition.text ? h('p', { class: 'admin-body-text' }, attempt.condition.text) : null, list(attempt.condition && attempt.condition.facts).length ? h('ul', { class: 'list' }, attempt.condition.facts.map((fact) => h('li', null, typeof fact === 'string' ? fact : fact.text))) : null, attempt.condition && attempt.condition.context ? h('p', { class: 'admin-body-text' }, attempt.condition.context) : null, attempt.condition && attempt.condition.audience ? h('p', { class: 'small soft' }, `Адресат: ${attempt.condition.audience}`) : null) : null,
+            attempt.text ? h('p', { class: 'admin-body-text admin-answer' }, attempt.text) : h('p', { class: 'small soft' }, attempt.status === 'processing' ? 'Текст появится после распознавания.' : 'Распознанного текста нет.'),
+            media(uid, session.id, attempt.audio, `Запись ответа урока, вариант ${index + 1}`),
+            lesson.kind === 'retell' ? h('p', { class: 'small soft' }, `Чтений перед ответом: ${attempt.reading_count || 1}.${attempt.independent ? ' Первый ответ без повторного чтения и предыдущего отзыва.' : ' Ответ после повторного чтения или предыдущей попытки.'}`) : h('p', { class: 'small soft' }, attempt.independent ? 'Первый ответ на этом этапе.' : 'Повторный ответ на этом этапе.'),
+            review ? lessonReview(review) : null,
+            attempt.error ? h('p', { class: 'admin-error' }, attempt.error) : null);
+        }) : h('p', { class: 'soft' }, 'Ответ ещё не отправлен.')));
     }
 
     function coachCard(result) {

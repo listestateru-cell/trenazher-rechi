@@ -578,7 +578,7 @@ async function route() {
     if (key === 'admin') adminEntry.setAttribute('aria-current', 'page');
     else adminEntry.removeAttribute('aria-current');
   }
-  const navKey = { ex: 'home', s: 'home', learn: 'home', conversation: 'home' }[key] || key;
+  const navKey = { ex: 'home', s: 'home', learn: 'home', lessons: 'home', conversation: 'home' }[key] || key;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   const root = $('#app');
   root.replaceChildren(h('div', { class: 'empty' }, h('div', { class: 'spinner', style: 'margin:0 auto' })));
@@ -590,6 +590,7 @@ async function route() {
     else if (key === 'groups' && parts[2] === 'duels' && window.TrainerDuels) view = await TrainerDuels.view(ctx, parts, params);
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
     else if (key === 'conversation' && window.TrainerConversations) view = await TrainerConversations.view(ctx, parts, params);
+    else if (key === 'lessons' && window.TrainerLessons) view = await TrainerLessons.catalog(ctx, parts[1] || 'thought');
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);
@@ -755,7 +756,7 @@ async function HomeView(ctx) {
     coach,
     h('div', { class: 'section-title' }, h('h2', null, 'Мысль и слово'), h('a', { href: '#/learn' }, 'Все задания', icon('arrow'))),
     h('p', { class: 'soft learning-intro' }, 'Короткие задания на ясность мысли и точность слов. Можно отвечать текстом или голосом.'),
-    h('div', { class: 'ex-grid learning-kinds' }, LEARNING_KINDS.map((kind) => h('a', { class: 'ex-card', href: `#/learn/${kind.id}` },
+    h('div', { class: 'ex-grid learning-kinds' }, window.TrainerLessons ? TrainerLessons.entryCards() : null, LEARNING_KINDS.map((kind) => h('a', { class: 'ex-card', href: `#/learn/${kind.id}` },
       h('div', { class: 'icon' }, icon(kind.icon)), h('h3', null, kind.title), h('p', { class: 'soft small' }, kind.description), h('div', { class: 'meta' }, h('span', { class: 'chip' }, 'Сначала своя попытка'), h('span', null, 'без таймера'))))),
     h('div', { class: 'section-title' }, h('h2', null, 'Упражнения'), h('span', { class: 'muted' }, 'каждое — отдельный навык')),
     h('div', { class: 'ex-grid' }, cards, conversationCard),
@@ -867,7 +868,8 @@ async function LearningCatalogView(ctx, kindId) {
     h('div', { class: 'ex-head' }, h('h1', null, selected ? selected.title : 'Мысль и слово'), h('span', { class: 'chip' }, 'Без таймера')),
     h('p', { class: 'soft learning-intro' }, selected ? description(selected) : 'Учитесь формулировать мысль и выбирать точные слова. После своей попытки получите подсказку, а затем примените приём в другой ситуации.'),
     selected && selected.id === 'synonyms' ? null : h('div', { class: 'learning-principle' }, icon('info'), h('p', null, 'Удачная правка и самостоятельный ответ на новой теме учитываются отдельно. Близкие слова не всегда взаимозаменяемы: важны ситуация и нужный оттенок.')),
-    recommended, guide ? guide.el : null, error, body);
+    recommended, guide ? guide.el : null, error,
+    !selected && window.TrainerLessons ? h('div', { class: 'ex-grid learning-kinds', style: 'margin-bottom:20px' }, TrainerLessons.entryCards()) : null, body);
   return guide ? { destroy() { guide.destroy(); } } : null;
 }
 
@@ -1010,6 +1012,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
   if (sess) { v.session = sess; v.exId = sess.exercise; }
+  if (sess && sess.lesson && window.TrainerLessons) return TrainerLessons.session(ctx, sess);
   if (sess && sess.exercise === 'conversation' && window.TrainerConversations) return TrainerConversations.view(ctx, ['conversation', sess.id], params, sess);
   if (sess && isLearningSession(sess)) return LearningSessionView(ctx, sess);
   if (sess && sess.group_duel && window.TrainerDuels) return TrainerDuels.review(ctx, sess);
@@ -2962,7 +2965,8 @@ async function HistoryView(ctx, params) {
   const sel = h('select', { 'aria-label': 'Упражнение' },
     h('option', { value: '' }, 'Все упражнения'),
     catalog().order.map((id) => h('option', { value: id, selected: id === filter }, catalog().exercises[id].title)),
-    LEARNING_KINDS.map((kind) => h('option', { value: kind.id, selected: kind.id === filter }, kind.title)));
+    LEARNING_KINDS.map((kind) => h('option', { value: kind.id, selected: kind.id === filter }, kind.title)),
+    window.TrainerLessons ? TrainerLessons.kinds.map((kind) => h('option', { value: 'lesson_' + kind.id, selected: 'lesson_' + kind.id === filter }, kind.title)) : null);
   sel.addEventListener('change', () => { location.hash = sel.value ? `#/history?ex=${sel.value}` : '#/history'; });
   const list = sessions.filter((x) => !filter || x.exercise === filter);
   const groups = new Map();
@@ -2990,6 +2994,8 @@ async function HistoryView(ctx, params) {
       } else if (sm) {
         stats.append(h('span', { class: 'chip num' }, `${f1(sm.fillers_per_min)} паразит./мин`), sm.wpm ? h('span', { class: 'chip num' }, `${sm.wpm} сл/мин`) : '',
           h('span', { class: 'score-pill' }, f1(sm.overall), h('small', null, '/10')));
+      } else if (x.lesson) {
+        stats.append(h('span', { class: 'chip' }, x.lesson.phase === 'complete' ? 'занятие завершено' : 'учебный урок'));
       } else if (x.learning_kind || st === 'practice') {
         const p = x.learning_progress;
         stats.append(h('span', { class: 'chip' }, p && p.completed ? 'формулировка получилась' : 'учебное задание'));
@@ -3355,7 +3361,7 @@ function showHealth(hl) {
 async function boot() {
   if (window.TrainerConnection) await TrainerConnection.readyPromise;
   const savedRoute = prefs.get('lastRoute', '');
-  if ((!location.hash || location.hash === '#/') && /^#\/(s|ex|learn|program|progress|history)(\/|$)/.test(savedRoute)) history.replaceState(null, '', savedRoute);
+  if ((!location.hash || location.hash === '#/') && /^#\/(s|ex|learn|lessons|program|progress|history)(\/|$)/.test(savedRoute)) history.replaceState(null, '', savedRoute);
   $('#settings-btn').addEventListener('click', openSettings);
   try {
     [app.catalog, app.state] = await Promise.all([api('/api/catalog'), api('/api/state')]);

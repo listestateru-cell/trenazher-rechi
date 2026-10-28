@@ -171,6 +171,8 @@
   }
 
   function recordingTarget(path) {
+    const lesson = /^\/api\/sessions\/([a-zA-Z0-9_-]{1,100})\/lesson\/audio\?stage=([0-2])$/.exec(path || '');
+    if (lesson) return { sessionId: lesson[1], takeIndex: null, thoughtId: null, lessonStage: Number(lesson[2]) };
     const match = /^\/api\/sessions\/([a-zA-Z0-9_-]{1,100})\/(?:takes\/(\d{1,4})|thoughts\/([a-zA-Z0-9_-]{1,100})\/audio)$/.exec(path || '');
     return match ? { sessionId: match[1], takeIndex: match[2] == null ? null : Number(match[2]), thoughtId: match[3] || null } : null;
   }

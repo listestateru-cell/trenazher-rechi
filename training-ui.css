@@ -1,0 +1,99 @@
+/* Значки тренировок используют одну геометрию и палитру в обеих темах. */
+:root {
+  --training-icon-blue: #317cdb; --training-icon-blue-end: #1552ae;
+  --training-icon-teal: #168f8b; --training-icon-teal-end: #086663;
+  --training-icon-amber: #bb730f; --training-icon-amber-end: #8d4f0a;
+  --training-icon-green: #3b914a; --training-icon-green-end: #226c31;
+  --training-icon-violet: #8055d5; --training-icon-violet-end: #53319d;
+  --training-icon-coral: #c15e3d; --training-icon-coral-end: #9e3f27;
+  --training-icon-rose: #bd4f83; --training-icon-rose-end: #8e2e5d;
+  --training-icon-indigo: #6167ce; --training-icon-indigo-end: #3d439f;
+  --training-icon-slate: #67778e; --training-icon-slate-end: #44546d;
+  --training-icon-ink: #fff;
+}
+.training-home-hero { align-items: start; gap: 24px; }
+.training-home-hero .hero-text { padding-top: 4px; gap: 12px; }
+.training-home-hero .hero-text p { font-size: 17px; line-height: 1.55; }
+.training-home-hero .trainer-mobile-install-launch { margin-top: 2px; }
+.training-home-hero .today-card { min-width: 0; gap: 12px; }
+.training-home-hero .today-card .row { gap: 8px; }
+.training-home-hero .today-card h2 { font-size: 21px; }
+.training-home-hero .today-card .btn { white-space: normal; height: auto; min-height: 44px; padding-block: 11px; }
+.training-home-section { margin-top: 30px; }
+.training-home-section .section-title { margin: 0 0 8px; justify-content: space-between; }
+.training-home-section .section-title h2 { font-size: 22px; }
+.training-home-section .section-title > a { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+.training-home-intro { font-size: 15px; margin-bottom: 16px; line-height: 1.5; }
+.training-app-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px 16px; align-items: start; }
+.training-tile {
+  --tile-start: var(--training-icon-blue); --tile-end: var(--training-icon-blue-end);
+  display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; min-height: 112px;
+  padding: 8px 2px; color: var(--ink); border-radius: 16px; text-align: center; cursor: pointer; touch-action: manipulation;
+}
+.training-tone-teal { --tile-start: var(--training-icon-teal); --tile-end: var(--training-icon-teal-end); }
+.training-tone-amber { --tile-start: var(--training-icon-amber); --tile-end: var(--training-icon-amber-end); }
+.training-tone-green { --tile-start: var(--training-icon-green); --tile-end: var(--training-icon-green-end); }
+.training-tone-violet { --tile-start: var(--training-icon-violet); --tile-end: var(--training-icon-violet-end); }
+.training-tone-coral { --tile-start: var(--training-icon-coral); --tile-end: var(--training-icon-coral-end); }
+.training-tone-rose { --tile-start: var(--training-icon-rose); --tile-end: var(--training-icon-rose-end); }
+.training-tone-indigo { --tile-start: var(--training-icon-indigo); --tile-end: var(--training-icon-indigo-end); }
+.training-tone-slate { --tile-start: var(--training-icon-slate); --tile-end: var(--training-icon-slate-end); }
+.training-tile-art {
+  position: relative; display: grid; place-items: center; width: 82px; height: 82px; flex: none;
+  color: var(--training-icon-ink); border-radius: 23px; background: linear-gradient(155deg, var(--tile-start), var(--tile-end));
+  box-shadow: inset 0 1px 1px #ffffff38, inset 0 -1px 1px #00000015, 0 5px 12px -8px #00000090;
+  transition: transform 180ms ease-out, filter 180ms ease-out;
+}
+.training-icon { width: 56px; height: 56px; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.training-tile-label { max-width: 150px; font-size: 15px; font-weight: 570; line-height: 1.35; overflow-wrap: anywhere; }
+.training-tile-badge { position: absolute; right: -7px; top: -6px; min-width: 26px; padding: 3px 6px; border-radius: 9px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-2); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.training-tile:hover { text-decoration: none; }
+.training-tile:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.training-tile:active .training-tile-art { transform: scale(.94); filter: brightness(.92); }
+@media (hover: hover) {
+  .training-tile:hover .training-tile-art { transform: translateY(-2px); filter: brightness(1.07); }
+  .training-tile:active .training-tile-art { transform: scale(.94); }
+}
+.training-gauge { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.training-gauge-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.training-gauge-copy h2 { font-size: 21px; }
+.training-gauge-value { font-size: 48px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.training-gauge-value small { font-size: 18px; font-weight: 500; color: var(--ink-2); letter-spacing: 0; }
+.training-gauge-trend { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.training-gauge-up .training-gauge-trend { color: var(--good-ink); }
+.training-gauge-down .training-gauge-trend { color: var(--bad-ink); }
+.training-gauge-dial { flex: 0 1 240px; width: 240px; max-width: 100%; overflow: visible; }
+.training-gauge-track, .training-gauge-fill { fill: none; stroke-width: 10; stroke-linecap: round; }
+.training-gauge-track { stroke: var(--surface-3); }
+.training-gauge-fill { stroke: var(--accent); }
+.training-gauge-needle { fill: none; stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; }
+.training-gauge-pivot { fill: var(--ink); }
+.training-gauge-tick { fill: var(--ink-2); font: 13px var(--font); }
+@media (max-width: 920px) {
+  .training-app-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .training-home-hero { gap: 20px; }
+  .training-home-hero .hero-text h1 { font-size: clamp(26px, 6.8vw, 32px); line-height: 1.16; }
+  .training-home-hero .hero-text p { font-size: 16px; }
+  .training-home-hero .today-card { display: flex; }
+  .training-home-section { margin-top: 26px; }
+  .training-home-section .section-title h2 { font-size: 21px; }
+  .training-home-intro { margin-bottom: 12px; }
+  .training-app-grid { gap: 14px 8px; }
+  .training-tile { gap: 8px; padding: 6px 0; min-height: 106px; }
+  .training-tile-art { width: 64px; height: 64px; border-radius: 18px; }
+  .training-tile-label { font-size: 13px; line-height: 1.3; }
+  .training-tile .training-icon { width: 44px; height: 44px; }
+  .training-tile-badge { right: -5px; top: -5px; font-size: 11px; min-width: 24px; }
+  .training-gauge { gap: 14px; flex-wrap: wrap; }
+  .training-gauge-dial { flex: 0 1 200px; margin-inline: auto; }
+  .training-gauge-copy { flex-basis: 210px; }
+}
+@media (max-width: 350px) {
+  .training-app-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .training-tile-art { transition: none; }
+  .training-tile:hover .training-tile-art, .training-tile:active .training-tile-art { transform: none; }
+}

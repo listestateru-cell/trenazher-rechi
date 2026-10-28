@@ -21,6 +21,8 @@
   <link rel="stylesheet" href="conversations.css">
   <link rel="stylesheet" href="lessons.css">
   <link rel="stylesheet" href="profiles.css">
+  <link rel="stylesheet" href="training-ui.css">
+  <link rel="stylesheet" href="program-ui.css">
   <script>
     // Тема ставится до отрисовки, чтобы не мигало.
     try { const t = localStorage.getItem('tr.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -36,7 +38,6 @@
       <nav class="nav" aria-label="Разделы">
         <a href="#/" data-nav="home">Тренировка</a>
         <a href="#/program" data-nav="program">Программа</a>
-        <a href="#/history" data-nav="history">История</a>
         <a href="#/progress" data-nav="progress">Прогресс</a>
         <a href="#/groups" data-nav="groups">Группы</a>
       </nav>
@@ -66,6 +67,9 @@
   <script src="duels.js"></script>
   <script src="conversations.js"></script>
   <script src="lessons.js"></script>
+  <script src="training-ui.js"></script>
+  <script src="program-ui.js"></script>
+  <script src="audio-retention.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

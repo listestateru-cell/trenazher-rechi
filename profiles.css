@@ -88,6 +88,8 @@
 .profile-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .profile-photo-remove { min-height: 48px; }
 .profile-group-heroes { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.profile-history { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
+.profile-history h2 { font-size: 21px; }
 .profile-group-heroes h2 { font-size: 21px; }
 .profile-group-heroes p { max-width: 64ch; }
 .profile-group-heroes .btn { min-height: 44px; }

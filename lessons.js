@@ -360,7 +360,8 @@ window.TrainerLessons = (() => {
       h('div', { class: 'after-actions' }, h('a', { class: 'btn ghost', href: href(lesson().kind) }, 'К другим заданиям'), h('a', { class: 'btn ghost', href: '#/history' }, 'История'))));
     draw(); schedule();
     window.addEventListener('beforeunload', beforeUnload); window.addEventListener('trainer:backendchange', reconnect);
-    return { destroy() { disposed = true; captureToken++; clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
+    return { retentionOwner: owner, retentionSession: () => busy || stopping || recording || pending || draft.submittedText ? null : session,
+      destroy() { disposed = true; captureToken++; clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
   }
   return { kinds, entryCards, catalog: catalogView, session: sessionView };
 })();

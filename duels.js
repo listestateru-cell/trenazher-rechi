@@ -38,6 +38,7 @@ window.TrainerDuels = (() => {
   }
 
   async function review(ctx, session) {
+    const retentionOwner = window.TrainerDrafts && TrainerDrafts.profile();
     const gid = session.duel_group_id;
     const root = h('section', { class: 'duels-view stack' });
     let stopped = false, timer = 0, error = '', busy = false;
@@ -65,10 +66,12 @@ window.TrainerDuels = (() => {
     }
     draw(); poll();
     render(ctx, root);
-    return { destroy() { stopped = true; clearTimeout(timer); root.querySelectorAll('audio').forEach((audio) => audio.pause()); } };
+    return { retentionOwner, retentionSession: () => busy ? null : session,
+      destroy() { stopped = true; clearTimeout(timer); root.querySelectorAll('audio').forEach((audio) => audio.pause()); } };
   }
 
   async function view(ctx, parts, params) {
+    const retentionOwner = window.TrainerDrafts && TrainerDrafts.profile();
     const gid = parts[1], week = params && params.get('week');
     const root = h('section', { class: 'duels-view stack' });
     let data = null, error = '', destroyed = false, loading = false, pending = false;
@@ -374,7 +377,8 @@ window.TrainerDuels = (() => {
     }
     await load();
     ticker = setInterval(paintTimer, 100);
-    return { destroy() {
+    return { retentionOwner, retentionSession: () => recording || starting || blob || uploadBusy || pending ? null : privateSession || session,
+      destroy() {
       destroyed = true; clearTimeout(pollTimer); clearInterval(ticker); window.removeEventListener('beforeunload', beforeUnload);
       root.querySelectorAll('audio').forEach((audio) => audio.pause());
       if (recording && rec) finishRecording();

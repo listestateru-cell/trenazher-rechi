@@ -725,7 +725,8 @@ window.TrainerConversations = (() => {
     draw(); schedulePoll();
     window.addEventListener('trainer:backendchange', onReconnect);
     window.addEventListener('beforeunload', beforeUnload);
-    return { destroy() {
+    return { retentionOwner: owner, retentionSession: () => busy || loading || recorder || stopping || openingMic || pending || textPending || textSending || parkedAudio.size ? null : session,
+      destroy() {
       destroyed = true; startToken++; clearTimeout(pollTimer);
       window.removeEventListener('trainer:backendchange', onReconnect); window.removeEventListener('beforeunload', beforeUnload);
       pauseAudio();

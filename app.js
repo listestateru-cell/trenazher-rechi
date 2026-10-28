@@ -562,6 +562,10 @@ async function route() {
   const token = ++routeToken;
   // При переходе между разделами терять нечего — тихо подтягиваем свежую версию.
   if (webVersion) checkVersion(false);
+  if (current && current.retentionSession && window.TrainerAudioRetention) {
+    const finished = current.retentionSession();
+    if (finished) TrainerAudioRetention.leave(finished, location.hash, current.retentionOwner).catch(() => {});
+  }
   if (current && current.destroy) current.destroy();
   current = null;
   if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -633,6 +637,17 @@ function doneSessions(sessions) {
   return sessions.filter((s) => s.summary && (s.analysis || {}).status === 'done');
 }
 function programStatus(sessions, state) {
+  if (state.program && Array.isArray(state.program.today_tasks)) {
+    const p = state.program;
+    const steps = catalog().program.map((step, i) => {
+      const task = p.today_tasks.find(item => item.exercise === step.exercise) || {};
+      return { ...step, i, done: task.done === true, score: task.score,
+        session: task.session_id ? sessions.find(session => session.id === task.session_id) || { id: task.session_id } : null };
+    });
+    return { start: p.start, dayN: p.phase === 'finished' ? 31 : p.day_number, steps,
+      doneCount: p.completed_today, next: steps.find(step => !step.done) || null,
+      stepsOn: date => ((p.calendar || []).find(day => day.date === date) || {}).completed || 0 };
+  }
   const competition = state.competition;
   const today = competition ? competition.today : todayStr();
   const start = state.program_start;
@@ -661,7 +676,7 @@ function programStatus(sessions, state) {
   };
 }
 function programHref(exercise, competition) {
-  return `#/ex/${exercise}?program=1${competition ? '&group=' + encodeURIComponent(competition.id) : ''}`;
+  return `#/ex/${exercise}?program=1${competition ? '&group=' + encodeURIComponent(competition.id) : '&scope=personal'}`;
 }
 async function programForGroup(state, gid) {
   if (!gid || (state.competition && state.competition.id === gid)) return state.competition;
@@ -709,61 +724,56 @@ async function HomeView(ctx) {
   if (window.TrainerProfiles) TrainerProfiles.refreshHeader(state);
   const ps = programStatus(sessions, state);
   const lastByEx = {};
-  for (const x of doneSessions(sessions)) if (!isDemoSession(x) && !lastByEx[x.exercise]) lastByEx[x.exercise] = x;
+  for (const x of doneSessions(sessions).slice().sort((a, b) => Date.parse(b.created) - Date.parse(a.created))) if (!isDemoSession(x) && !lastByEx[x.exercise]) lastByEx[x.exercise] = x;
 
+  const ui = window.TrainerTrainingUI;
   const today = h('div', { class: 'card today-card' },
     h('div', { class: 'row' }, h('h2', null, 'Программа дня'), h('span', { class: 'spacer' }),
       ps.start ? h('span', { class: 'chip' }, ps.dayN > 30 ? 'программа пройдена' : `день ${ps.dayN} из 30`) : null),
     state.competition ? h('p', { class: 'soft' }, h('a', { href: `#/groups/${state.competition.id}` }, state.competition.name), ' · задания общие для всей группы') : null,
-    h('p', { class: 'soft' }, ps.start
+    h('p', { class: 'soft' }, state.program && state.program.phase === 'finished' ? '30 дней завершены. Ваш календарь, баллы и результаты сохранены.' : ps.start
       ? (ps.doneCount === 5 ? 'Все пять упражнений на сегодня сделаны. Завтра — следующий день.' : `Сделано ${ps.doneCount} из 5. Следующее — «${catalog().exercises[ps.next.exercise].title}».`)
       : '20 минут в день: спринт, минута без подготовки, сокращение мысли, объяснение и поединок. 30 дней подряд.'),
     h('div', { class: 'steps', 'aria-hidden': 'true' }, ps.steps.map((x) => h('span', { class: x.done ? 'done' : '' }))),
+    state.program ? h('p', { class: 'small soft' }, `${state.program.points} баллов · серия полных дней: ${state.program.streak} · пропущено: ${state.program.skipped_days}`) : null,
     h('div', { class: 'row' },
-      ps.next
+      ps.next && !(state.program && state.program.phase === 'finished')
         ? h('a', { class: 'btn', href: programHref(ps.next.exercise, state.competition) }, ps.start ? 'Продолжить' : 'Начать программу', icon('arrow'))
         : h('a', { class: 'btn ghost', href: '#/progress' }, 'Посмотреть прогресс'),
       h('a', { class: 'btn ghost', href: '#/program' }, 'Вся программа')));
 
-  const nextQ = (state.coach_next && state.coach_next.question) || catalog().first_coach_question;
-  const coach = h('div', { class: 'card coach-card' },
-    h('div', { class: 'grow' },
-      h('div', { class: 'row' }, h('span', { class: 'chip dark' }, `Вопрос тренера · уровень ${state.coach_level}`),
-        h('span', { class: 'muted small' }, '30 секунд, без подготовки')),
-      h('div', { class: 'q' }, nextQ)),
-    h('a', { class: 'btn', href: '#/ex/coach' }, icon('mic'), 'Ответить'));
-
   const conversationCard = window.TrainerConversations ? await TrainerConversations.homeCard() : null;
-  const cards = catalog().order.map((id) => {
+  const tiles = catalog().order.map((id) => {
     const ex = catalog().exercises[id];
     const last = lastByEx[id];
-    return h('a', { class: 'ex-card', href: `#/ex/${id}` },
-      h('div', { class: 'icon' }, icon(EX_ICON[id])),
-      last ? h('span', { class: 'score-pill score-badge', title: 'Средняя оценка в прошлый раз' }, f1(last.summary.overall), h('small', null, '/10')) : null,
-      h('h3', null, ex.title),
-      h('p', { class: 'soft small' }, ex.hint),
-      h('div', { class: 'meta' }, h('span', { class: 'chip' }, ex.develops), h('span', null, durLabel(ex))));
+    const description = `${ex.hint} ${durLabel(ex)}${last ? `. Прошлая оценка ${f1(last.summary.overall)} из 10` : ''}`;
+    return ui.tile({ title: id === 'duel' ? 'Поединок' : ex.title, href: `#/ex/${id}`, icon: id, description: id === 'duel' ? `${ex.title}. ${description}` : description,
+      badge: last && Number.isFinite(last.summary.overall) ? f1(last.summary.overall) : null });
   });
+  if (conversationCard) tiles.push(ui.tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
+    description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
+  const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => ui.tile({
+    title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
+  const learningTiles = LEARNING_KINDS.map(kind => ui.tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title, href: `#/learn/${kind.id}`, icon: kind.id, description: kind.description }));
+  learningTiles.push(ui.tile({ title: 'Все задания', href: '#/learn', icon: 'all', description: 'Все задания на мысль, слова и пересказ.' }));
 
   render(ctx,
-    h('section', { class: 'hero' },
+    h('section', { class: 'hero training-home-hero' },
       h('div', { class: 'hero-text' },
         h('h1', null, 'Говорить быстро, грамотно и убедительно'),
-        h('p', null, 'Отвечаете голосом — тренер слышит каждое «ну», «вот» и «э-э», меряет паузы по звуку, находит неточности и показывает, как сказать сильнее.'),
-        h('div', { class: 'skills' }, ['Логика', 'Словарный запас', 'Скорость мышления', 'Убедительность', 'Структура речи'].map((x) => h('span', { class: 'chip' }, x)))),
+        h('p', null, 'Тренируйте речь, получайте разбор и пробуйте сказать точнее. Каждый день — пять коротких упражнений.'),
+        h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' },
+          icon('upload'), 'Добавить на экран телефона')),
       today),
     window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
-    coach,
-    h('div', { class: 'section-title' }, h('h2', null, 'Мысль и слово'), h('a', { href: '#/learn' }, 'Все задания', icon('arrow'))),
-    h('p', { class: 'soft learning-intro' }, 'Короткие задания на ясность мысли и точность слов. Можно отвечать текстом или голосом.'),
-    h('div', { class: 'ex-grid learning-kinds' }, window.TrainerLessons ? TrainerLessons.entryCards() : null, LEARNING_KINDS.map((kind) => h('a', { class: 'ex-card', href: `#/learn/${kind.id}` },
-      h('div', { class: 'icon' }, icon(kind.icon)), h('h3', null, kind.title), h('p', { class: 'soft small' }, kind.description), h('div', { class: 'meta' }, h('span', { class: 'chip' }, 'Сначала своя попытка'), h('span', null, 'без таймера'))))),
-    h('div', { class: 'section-title' }, h('h2', null, 'Упражнения'), h('span', { class: 'muted' }, 'каждое — отдельный навык')),
-    h('div', { class: 'ex-grid' }, cards, conversationCard),
-    h('div', { class: 'note-row' },
-      h('div', { class: 'card' }, h('h3', null, 'Быстро говорить'), h('p', { class: 'soft small' }, 'Произносить много слов за короткое время. Полезно, но не главное.')),
-      h('div', { class: 'card' }, h('h3', null, 'Быстро мыслить'), h('p', { class: 'soft small' }, 'Находить нужные аргументы и формулировки без долгих пауз. Сюда — главный приоритет.')),
-      h('div', { class: 'card' }, h('h3', null, 'Убедительно говорить'), h('p', { class: 'soft small' }, 'Доносить мысль так, чтобы её сразу поняли. Короткая осмысленная пауза здесь помогает, а не мешает.'))));
+    h('section', { class: 'training-home-section', 'aria-labelledby': 'home-training-title' },
+      h('div', { class: 'section-title' }, h('h2', { id: 'home-training-title' }, 'Тренировки')),
+      h('p', { class: 'soft training-home-intro' }, 'Выберите упражнение, если хотите позаниматься отдельно от программы.'),
+      ui.grid(tiles, 'Упражнения для речи')),
+    h('section', { class: 'training-home-section', 'aria-labelledby': 'home-learning-title' },
+      h('div', { class: 'section-title' }, h('h2', { id: 'home-learning-title' }, 'Мысль и слово')),
+      h('p', { class: 'soft training-home-intro' }, 'Учитесь связывать мысли, подбирать слова и пересказывать. Можно отвечать текстом или голосом.'),
+      ui.grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')));
   return null;
 }
 
@@ -874,6 +884,7 @@ async function LearningCatalogView(ctx, kindId) {
 }
 
 async function LearningSessionView(ctx, initial) {
+  const retentionOwner = window.TrainerDrafts && TrainerDrafts.profile();
   let sess = initial, destroyed = false, pollT = 0, recording = false, progressKey = '';
   const kind = LEARNING_KINDS.find((k) => k.id === (sess.learning_kind || sess.exercise));
   const formattedSynonyms = kind.id === 'synonyms' && (sess.thoughts || []).some((p) => p.practice_format);
@@ -936,7 +947,8 @@ async function LearningSessionView(ctx, initial) {
   }
   update();
   schedulePoll();
-  return { destroy() { destroyed = true; clearTimeout(pollT); workshop.destroy(); if (guide) guide.destroy(); mic.close(); window.removeEventListener('beforeunload', onUnload); } };
+  return { retentionOwner, retentionSession: () => recording || workshop.isRecording() ? null : sess,
+    destroy() { destroyed = true; clearTimeout(pollT); workshop.destroy(); if (guide) guide.destroy(); mic.close(); window.removeEventListener('beforeunload', onUnload); } };
 }
 
 function learningMaterials(p) {
@@ -1003,6 +1015,7 @@ function exerciseInstructionsForDisplay(exId, definition, currentDefinition) {
 }
 
 async function ExerciseView(ctx, { exId, sid, params }) {
+  const retentionOwner = window.TrainerDrafts && TrainerDrafts.profile();
   const v = {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
     forceIndex: null, pollT: 0, raf: 0, cards: new Map(), destroyed: false, editing: false,
@@ -1027,10 +1040,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       'Затем за 90 секунд составьте с каждым названным словом короткое осмысленное предложение.',
       'У этой сохранённой попытки осталось прежнее задание. В новом спринте слова нужно соединить в одну историю.'],
   };
-  v.programDay = v.session ? v.session.program_day : (params.get('program') ? todayStr() : null);
-  const exerciseProgram = !v.session && (v.programDay || params.get('group'))
+  v.programDay = v.session ? v.session.program_day : (params.get('program') ? (state.program || {}).today || todayStr() : null);
+  const exerciseProgram = params.get('scope') !== 'personal' && !v.session && (v.programDay || params.get('group'))
     ? await programForGroup(state, params.get('group')) : null;
   v.groupId = v.session ? v.session.group_id : (exerciseProgram ? exerciseProgram.id : null);
+  v.programScope = v.groupId ? `group:${v.groupId}` : v.programDay ? 'personal' : null;
   const sharedTask = !v.session && exerciseProgram && exerciseProgram.tasks.find((task) => task.exercise === v.exId);
   if (sharedTask) {
     v.programDay = exerciseProgram.today;
@@ -1271,12 +1285,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
   }
 
-  const freshHref = () => `#/ex/${v.exId}${v.programDay ? '?program=1' : ''}${v.groupId ? '&group=' + encodeURIComponent(v.groupId) : ''}`;
+  const freshHref = () => v.programDay ? programHref(v.exId, v.groupId ? { id: v.groupId } : null) : `#/ex/${v.exId}`;
 
   async function ensureSession() {
     if (v.session) return true;
     try {
-      v.session = await api('/api/sessions', { method: 'POST', body: { exercise: v.exId, topic: v.topic, program_day: v.programDay, group_id: v.groupId } });
+      v.session = await api('/api/sessions', { method: 'POST', body: { exercise: v.exId, topic: v.topic, program_day: v.programDay, group_id: v.groupId, program_scope: v.programScope } });
     } catch (e) {
       toast(e.message);
       return false;
@@ -1284,9 +1298,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     history.replaceState(null, '', `#/s/${v.session.id}`);
     prefs.set('lastRoute', `#/s/${v.session.id}`);
     if (!isFree) rememberTopic(v.exId, v.topic);
-    if (v.programDay && !app.state.program_start) {
-      api('/api/state', { method: 'POST', body: { program_start: v.programDay } }).then((st) => { app.state = { ...app.state, ...st }; }).catch(() => {});
-    }
+    if (v.programDay) api('/api/state').then((st) => { app.state = { ...app.state, ...st }; }).catch(() => {});
     v.topic = v.session.topic;
     v.groupId = v.session.group_id || null;
     renderTopic();
@@ -1851,6 +1863,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (!demo && t.metrics && t.metrics.cut_by_timer) el.append(h('div', { class: 'warn-line' }, 'У границы времени в записи слышна речь. По этому признаку нельзя определить, закончена ли мысль.'));
 
     const words = t.words || [];
+    if (t.audio_removed) el.append(h('p', { class: 'small soft' }, 'После завершения занятия аудио удалено. Текст ответа и разбор сохранены.'));
+    const versions = (v.session.take_history || []).filter(take => take.index === i);
+    if (versions.length) el.append(h('details', { class: 'transcript-editor' }, h('summary', null, `Прежние версии ответа · ${versions.length}`),
+      versions.map((take, index) => h('div', { class: 'callout' }, h('p', { class: 'small soft' }, `Версия ${index + 1}`),
+        h('p', { class: 'transcript' }, take.transcript_text || take.text || (take.words || []).map(word => word.t).join(' '))))));
     let player = null;
     const wordEls = [];
     if (t.audio) {
@@ -2063,6 +2080,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   if (params.get('thought')) setTimeout(() => { if (!v.destroyed) thoughts.focus(params.get('thought')); }, 150);
 
   return {
+    retentionOwner,
+    retentionSession: () => busy() || v.pendingTake || thoughts.isRecording() ? null : v.session,
     destroy() {
       v.destroyed = true;
       document.body.classList.remove('has-exercise-next');
@@ -2854,6 +2873,7 @@ function makePlayer(src, durationHint, onTime) {
 
 /* ===================== программа ===================== */
 async function ProgramView(ctx) {
+  if (window.TrainerProgramUI) return TrainerProgramUI.view(ctx);
   const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
   app.state = state;
   const ps = programStatus(sessions, state);
@@ -3131,10 +3151,14 @@ async function ProgressView(ctx) {
   const realSessions = sessions.filter((session) => !isDemoSession(session));
   const demoNotice = realSessions.length < sessions.length ? h('p', { class: 'small soft' },
     'Демонстрационные прохождения не учитываются в личном прогрессе. Их результаты доступны в рейтингах групп.') : null;
-  const done = doneSessions(realSessions).slice().reverse();
+  const done = doneSessions(realSessions).slice().sort((a, b) => Date.parse(a.created) - Date.parse(b.created));
+  const trend = typeof window !== 'undefined' && window.TrainerTrainingUI ? TrainerTrainingUI.scoreTrend(realSessions) : null;
+  const speechGauge = trend ? TrainerTrainingUI.progressGauge({ value: trend.value, previous: trend.previous,
+    title: 'Как меняется ваша речь', detail: trend.detail }) : null;
   if (!done.length) {
     render(ctx, h('h1', { style: 'margin-bottom:18px' }, 'Прогресс'),
       demoNotice,
+      speechGauge,
       skillProgressCard(skillData),
       h('div', { class: 'card empty' }, h('h3', null, 'Пока нечего сравнивать'), h('p', null, 'После первых разборов здесь появятся графики: паразиты, заминки, темп и оценки.'),
         h('p', { style: 'margin-top:14px' }, h('a', { class: 'btn', href: '#/' }, 'К упражнениям'))));
@@ -3145,19 +3169,17 @@ async function ProgressView(ctx) {
     return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
   };
   const first = done.slice(0, 5), recent = done.slice(-5);
-  const avgFirst = avg(first.map((x) => x.summary.overall)), avgRecent = avg(recent.map((x) => x.summary.overall));
+  const avgRecent = avg(recent.map((x) => x.summary.overall));
   const minutes = done.reduce((a, x) => a + (x.summary.speech_time || 0), 0) / 60;
   const days = new Set(done.map((x) => x.created.slice(0, 10))).size;
   const st = streak(realSessions);
-  const delta = done.length >= 6 ? avgRecent - avgFirst : null;
 
   const kpi = (label, val, sub, subCls) => h('div', { class: 'kpi' }, h('div', { class: 'k-label' }, label), h('div', { class: 'k-val' }, val), sub ? h('div', { class: 'k-sub', style: subCls || '' }, sub) : null);
   const kpis = h('div', { class: 'kpis' },
     kpi('Тренировок', String(done.length), `за ${days} ${plural(days, 'день', 'дня', 'дней')}`),
     kpi('Минут речи', f1(minutes), 'наговорено и разобрано'),
-    kpi('Дней подряд', String(st), st ? 'серия продолжается' : 'начните серию сегодня'),
-    kpi('Средняя оценка', f1(avgRecent), delta == null ? 'за последние пять' : `${delta >= 0 ? '+' : '−'}${f1(Math.abs(delta))} к первым пяти${delta >= 0.05 ? ' — растёт' : delta <= -0.05 ? ' — просела' : ''}`,
-      delta == null ? '' : `color:${delta >= 0.05 ? 'var(--good-ink)' : delta <= -0.05 ? 'var(--bad-ink)' : 'var(--ink-2)'}`));
+    kpi('Дней занятий подряд', String(st), st ? 'серия продолжается' : 'начните серию сегодня'),
+    kpi('Средняя оценка', f1(avgRecent), `за последние ${recent.length} ${plural(recent.length, 'разбор', 'разбора', 'разборов')}`));
 
   // Если все тренировки в один день, на оси полезнее время, а не дата.
   const oneDay = days === 1;
@@ -3245,6 +3267,7 @@ async function ProgressView(ctx) {
   render(ctx,
     h('div', { class: 'ex-head' }, h('h1', null, 'Прогресс')),
     demoNotice,
+    speechGauge,
     kpis,
     skillProgressCard(skillData),
     h('div', { class: 'section-title' }, h('h2', null, 'Динамика'), h('span', { class: 'muted' }, 'каждая точка — тренировка с разбором'), h('span', { class: 'spacer' }), tableBtn),
@@ -3343,8 +3366,8 @@ async function openSettings() {
     h('div', { class: 'field' }, sw('sounds', true, 'Звуковые сигналы старта и конца записи'), sw('readQuestion', true, 'Тренер зачитывает вопрос вслух перед ответом')),
     h('div', { class: 'field' }, h('div', { class: 'label' }, `Уровень вопросов тренера: ${lvl} из 5`), h('div', { class: 'row' }, resetLvl)),
     h('div', { class: 'help' }, isOwner
-      ? 'Записи и разборы хранятся на этом компьютере, в папке data рядом с тренажёром. Распознавание локальное. Тренеру отправляются только текст расшифровки и замеры: обычно в Claude, при его ошибке в Codex. Звук им не передаётся.'
-      : 'Записи хранятся на компьютере владельца тренажёра. Они доступны вам и владельцу; другие участники их не видят. Распознавание локальное. Тренеру отправляются только текст расшифровки и замеры: обычно в Claude, при его ошибке в Codex. Звук им не передаётся.')));
+      ? 'Тексты и разборы хранятся на этом компьютере. После завершения занятия и перехода дальше аудиозаписи удаляются; незавершённые ответы остаются для восстановления. Распознавание локальное. Тренеру отправляются только текст и замеры: обычно в Claude, при его ошибке в Codex.'
+      : 'Тексты и разборы хранятся на компьютере владельца тренажёра. После завершения занятия и перехода дальше аудиозаписи удаляются; незавершённые ответы остаются для восстановления. Распознавание локальное. Тренеру отправляются только текст и замеры: обычно в Claude, при его ошибке в Codex.')));
   if (!dlg.open) dlg.showModal();
   fillMics();
 }
@@ -3380,6 +3403,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && webVersion) checkVersion(false); });
   route();
   showDraftRecovery();
+  if (window.TrainerAudioRetention) TrainerAudioRetention.retry().catch(() => {});
   if (window.TrainerMobile) TrainerMobile.refresh();
 }
 boot();

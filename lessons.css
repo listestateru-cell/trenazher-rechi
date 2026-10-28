@@ -5,6 +5,11 @@
 .lesson-catalog-item { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .lesson-catalog-item h2 { font-size: 23px; }
 .lesson-catalog-item .row:last-child { margin-top: auto; padding-top: 8px; }
+.lesson-blind-start { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; max-width: 720px; }
+.lesson-blind-start > * { margin-block: 0; }
+.lesson-blind-start h2 { font-size: 24px; line-height: 1.35; }
+.lesson-blind-start p { line-height: 1.65; }
+.lesson-blind-start .btn { min-height: 44px; }
 .lesson-intro-note { max-width: 720px; margin: 0 0 28px; line-height: 1.65; color: var(--ink-2); }
 .lesson-steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 24px 0; gap: 12px; }
 .lesson-steps li { display: flex; gap: 10px; align-items: center; color: var(--ink-2); font-size: 14px; padding-bottom: 14px; border-bottom: 2px solid var(--line); }
@@ -21,6 +26,7 @@
 .lesson-facts { padding-left: 24px; line-height: 1.7; }
 .lesson-facts li + li { margin-top: 9px; }
 .lesson-citation { font-size: 15px; color: var(--ink-2); line-height: 1.6; }
+.lesson-task > .lesson-citation, .lesson-original > .lesson-citation { border-top: 1px solid var(--line); padding-top: 18px; }
 .lesson-citation p { margin: 0; }
 .lesson-citation a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--accent-ink); }
 .lesson-citation svg { width: 16px; height: 16px; }
@@ -66,4 +72,5 @@
   .lesson-page .lesson-task .btn { align-self: stretch; }
   .lesson-own-answer { padding: 14px; }
   .lesson-catalog-item h2 { font-size: 21px; }
+  .lesson-blind-start .btn { align-self: stretch; }
 }

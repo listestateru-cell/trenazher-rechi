@@ -3,7 +3,7 @@
 window.TrainerLessons = (() => {
   const kinds = [
     { id: 'thought', title: 'Собери понятную мысль', icon: 'bulb', description: 'Найдите, где теряется смысл, соберите рассказ из фактов и попробуйте на другой теме.' },
-    { id: 'retell', title: 'Пересказ классики', icon: 'book', description: 'Прочитайте небольшой отрывок и передайте его своими словами. Тренер проверит, что сохранилось по смыслу.' },
+    { id: 'retell', title: 'Пересказ классики', icon: 'book', description: 'Прочитайте текст из классики и передайте его своими словами. Тренер проверит, что сохранилось по смыслу.' },
   ];
   const enc = encodeURIComponent;
   const href = kind => `#/lessons/${kind}`;
@@ -31,12 +31,29 @@ window.TrainerLessons = (() => {
     const selected = list(data.kinds).find(item => item.id === kindId);
     if (!selected) throw new Error('Такого учебного раздела нет. Вернитесь к выбору упражнений.');
     const meta = metadata(kindId), controls = [], error = h('p', { role: 'alert', class: 'thought-error', hidden: true });
-    let busy = false;
+    let busy = false, startRequestId = null, startContentId = null;
     async function start(item) {
       if (busy) return; busy = true; error.hidden = true; controls.forEach(control => { control.disabled = true; });
-      try { const saved = await api('/api/lessons', { method: 'POST', body: { kind: kindId, content_id: item.id } }); if (ctx.alive()) location.hash = `#/s/${saved.id}`; }
-      catch (caught) { if (ctx.alive()) { error.textContent = caught.message; error.hidden = false; } }
+      const contentId = item && item.id || null;
+      if (contentId !== startContentId) { startContentId = contentId; startRequestId = null; }
+      try { const saved = await api('/api/lessons', { method: 'POST', body: item ? { kind: kindId, content_id: item.id } : { kind: kindId }, requestId: startRequestId,
+        onRequestId: id => { startRequestId = id; } }); if (ctx.alive()) location.hash = `#/s/${saved.id}`; }
+      catch (caught) { if (caught.status >= 400 && caught.status < 500 && !caught.requestState) startRequestId = null; else if (caught.requestId) startRequestId = caught.requestId;
+        if (ctx.alive()) { error.textContent = caught.message; error.hidden = false; } }
       finally { busy = false; controls.forEach(control => { control.disabled = false; }); }
+    }
+    if (kindId === 'retell') {
+      const launch = button('Получить текст', () => start(), true); controls.push(launch);
+      render(ctx, h('div', { class: 'lesson-page' }, h('a', { class: 'back', href: '#/learn' }, icon('back'), 'Мысль и слово'),
+        h('h1', null, meta.title), h('p', { class: 'soft learning-intro' }, meta.description),
+        h('section', { class: 'card lesson-blind-start' }, h('span', { class: 'chip' }, 'Около пяти минут чтения'),
+          h('h2', null, 'Новый отрывок'),
+          h('p', null, 'Приложение само выберет текст. Он откроется после начала занятия.'),
+          h('p', null, 'Читайте в своём темпе. Автор и название произведения будут под текстом.'),
+          h('p', null, 'Когда закончите читать, текст скроется. Расскажите, что запомнили, голосом или письменно. Время пересказа не ограничено.'),
+          selected.resumable ? h('a', { class: 'btn ghost', href: `#/s/${enc(selected.resumable)}` }, 'Продолжить начатый пересказ', icon('arrow')) : null,
+          error, launch)));
+      return null;
     }
     const items = list(selected.items).map(item => {
       const progress = item.progress || {}, previous = progress.last_session_id;
@@ -67,6 +84,8 @@ window.TrainerLessons = (() => {
     const owner = window.TrainerDrafts && TrainerDrafts.profile(), base = `/api/sessions/${enc(session.id)}/lesson`;
     const live = () => !disposed && ctx.alive() && (!window.TrainerDrafts || owner === TrainerDrafts.profile());
     const lesson = () => session.lesson || {};
+    const textLimit = () => Number(lesson().limits && lesson().limits.text_characters) || (lesson().kind === 'retell' ? 50000 : 6000);
+    const audioLimit = () => lesson().kind === 'retell' ? null : Number(lesson().limits && lesson().limits.audio_seconds) || 90;
     const currentStage = () => Number(lesson().stage || 0);
     const endpoint = verb => `${base}/${verb}`;
     const textKey = stage => `lesson-text:${session.id}:${stage}`;
@@ -84,7 +103,7 @@ window.TrainerLessons = (() => {
     const alert = h('p', { class: 'thought-error', role: 'alert', hidden: true });
     const status = h('p', { class: 'small soft', role: 'status', hidden: true });
     const label = h('label', { for: 'lesson-answer' }, 'Ваш ответ');
-    const input = h('textarea', { id: 'lesson-answer', rows: 5, maxlength: 6000, 'aria-describedby': 'lesson-answer-help', oninput: () => {
+    const input = h('textarea', { id: 'lesson-answer', rows: 5, maxlength: textLimit(), 'aria-describedby': 'lesson-answer-help', oninput: () => {
       if (busy || draft.submittedText || !live()) return;
       draft = { text: input.value }; persistText(); updateComposer();
     } });
@@ -146,7 +165,7 @@ window.TrainerLessons = (() => {
     function draw() {
       if (!live()) return;
       loadText(); const data = lesson(), meta = metadata(data.kind), current = data.current || {};
-      replace(header, h('h1', null, session.title || meta.title), h('span', { class: 'chip' }, meta.title));
+      replace(header, h('h1', null, data.kind === 'retell' ? meta.title : session.title || meta.title), data.kind === 'retell' ? null : h('span', { class: 'chip' }, meta.title));
       const stepNames = data.kind === 'retell' ? ['Чтение', 'Пересказ', 'Разбор'] : ['Найти разрыв', 'Собрать рассказ', 'Новая тема'];
       const position = data.phase === 'complete' ? 3 : data.kind === 'retell' ? data.phase === 'reading' ? 0 : data.phase === 'answer' ? 1 : 2 : currentStage();
       const stepKey = JSON.stringify([stepNames, position]);
@@ -155,9 +174,11 @@ window.TrainerLessons = (() => {
       if (taskKey !== lastTask) {
         lastTask = taskKey;
         if (data.kind === 'retell') {
-          replace(task, h('h2', null, current.title || session.topic || 'Отрывок для пересказа'), citationNode(current.citation),
+          replace(task, h('h2', null, data.phase === 'reading' ? 'Читайте в своём темпе' : 'Пересказ своими словами'),
+            data.phase === 'reading' ? h('p', { class: 'small soft' }, current.reading_minutes ? 'Примерно пять минут чтения. Перейдите к пересказу, когда будете готовы.' : 'Перейдите к пересказу, когда будете готовы.') : null,
             data.phase === 'reading' && current.context ? h('p', { class: 'small soft' }, current.context) : null,
             data.phase === 'reading' ? h('div', { class: `lesson-excerpt ${isPoetry(current.genre) ? 'is-poetry' : ''}` }, current.text || '') : h('p', { class: 'soft' }, 'Отрывок скрыт. Передайте своими словами то, что вы запомнили.'),
+            data.phase === 'reading' ? citationNode(current.citation) : null,
             data.phase === 'reading' ? button('Закончил читать — перейти к пересказу', () => mutate('read'), true, controlsLocked()) : null,
             data.phase !== 'reading' && data.phase !== 'complete' ? button('Прочитать отрывок ещё раз', () => mutate('reopen-read'), false, controlsLocked() || !!pending || !!draft.submittedText) : null,
             Number(data.reading_count) > 1 ? h('p', { class: 'small soft' }, 'Вы перечитали отрывок. Тренер отметит это в новой попытке.') : null);
@@ -212,16 +233,16 @@ window.TrainerLessons = (() => {
         else append(content, h('p', { role: 'status', class: 'soft' }, 'Тренер проверяет ответ. Он уже сохранён.'));
         return h('details', { class: 'card lesson-attempt', open: latest && current }, h('summary', null, `Попытка ${index + 1}${data.kind === 'thought' ? ` · шаг ${attempt.stage + 1}` : ''}`), content);
       });
-      if (data.source_text && ['review', 'complete'].includes(data.phase)) nodes.push(h('details', { class: 'card lesson-original' }, h('summary', null, 'Сравнить с исходным отрывком'), data.current && data.current.context ? h('p', { class: 'small soft' }, data.current.context) : null, h('div', { class: `lesson-excerpt ${isPoetry((data.current || {}).genre) ? 'is-poetry' : ''}` }, data.source_text)));
+      if (data.source_text && ['review', 'complete'].includes(data.phase)) nodes.push(h('details', { class: 'card lesson-original' }, h('summary', null, 'Сравнить с исходным отрывком'), data.current && data.current.context ? h('p', { class: 'small soft' }, data.current.context) : null, h('div', { class: `lesson-excerpt ${isPoetry((data.current || {}).genre) ? 'is-poetry' : ''}` }, data.source_text), citationNode((data.current || {}).citation)));
       if (data.phase === 'complete') nodes.push(h('section', { class: 'card lesson-complete' }, h('h2', null, 'Занятие завершено'), h('p', null, 'Ваши ответы и разборы сохранены. Вы можете вернуться к ним в истории.'),
-        h('a', { class: 'btn', href: href(data.kind) }, data.kind === 'retell' ? 'Выбрать другой отрывок' : 'Выбрать следующий урок', icon('arrow'))));
+        h('a', { class: 'btn', href: href(data.kind) }, data.kind === 'retell' ? 'Получить новый текст' : 'Выбрать следующий урок', icon('arrow'))));
       replace(feedback, ...nodes);
     }
     function updateComposer() {
       if (!live()) return;
       const disabled = controlsLocked();
       composer.hidden = !canAnswer() && !recording && !pending && !stopping;
-      if (recording) { replace(composer, h('h2', null, 'Идёт запись ответа'), h('p', { role: 'status' }, 'Закончите запись, когда выразите мысль. До 90 секунд.'), h('div', { class: 'row' }, button('Закончить запись', stopRecording, true), button('Отменить запись', cancelRecording))); return; }
+      if (recording) { replace(composer, h('h2', null, 'Идёт запись ответа'), h('p', { role: 'status' }, audioLimit() ? `Закончите запись, когда выразите мысль. До ${audioLimit()} секунд.` : 'Рассказывайте в своём темпе. Когда закончите, остановите запись и отправьте её.'), h('div', { class: 'row' }, button('Закончить запись', stopRecording, true), button('Отменить запись', cancelRecording))); return; }
       if (stopping) { replace(composer, h('p', { role: 'status' }, 'Сохраняю запись на устройстве…')); return; }
       if (pending) {
         if (pending.incomplete) {
@@ -236,6 +257,7 @@ window.TrainerLessons = (() => {
           confirmButton('Убрать запись', 'Убрать эту запись?', discardAudio)), pending.error ? h('p', { class: 'thought-error' }, pending.error) : null); return;
       }
       input.disabled = disabled; input.readOnly = !!draft.submittedText;
+      input.maxLength = textLimit();
       label.textContent = lesson().kind === 'retell' ? 'Ваш пересказ' : currentStage() === 0 ? 'Где теряется смысл и чего не хватает слушателю?' : 'Ваш рассказ';
       send.disabled = disabled || !input.value.trim(); send.textContent = busy ? 'Отправляю…' : draft.submittedText ? 'Повторить отправку' : 'Отправить ответ';
       micButton.disabled = disabled || !!draft.submittedText;
@@ -266,7 +288,9 @@ window.TrainerLessons = (() => {
         const stream = await mic.open(); if (!live() || token !== captureToken) { closeMic(stream); return; }
         recordStream = stream;
         recording = new Recorder(stream, { journal: { path: audioPath(stage), userId: session.user, context: window.TrainerDrafts && TrainerDrafts.context(), onStatus: value => { if (live() && !value.durable) { warning = value.notice; drawStatus(); } } } });
-        recording.start(); recordTimer = setTimeout(() => { warning = 'Прошло 90 секунд. Запись остановлена и ждёт отправки.'; stopRecording(); }, 90000);
+        recording.start();
+        const seconds = audioLimit();
+        if (seconds) recordTimer = setTimeout(() => { warning = `Прошло ${seconds} секунд. Запись остановлена и ждёт отправки.`; stopRecording(); }, seconds * 1000);
       } catch (caught) { error = caught.message; closeMic(); }
       finally { busy = false; if (live()) draw(); }
     }

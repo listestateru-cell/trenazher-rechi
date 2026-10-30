@@ -171,6 +171,8 @@
   }
 
   function recordingTarget(path) {
+    const assessment = /^\/api\/assessment\/([a-zA-Z0-9_-]{1,100})\/audio$/.exec(path || '');
+    if (assessment) return { sessionId: assessment[1], takeIndex: null, thoughtId: null, assessment: true };
     const lesson = /^\/api\/sessions\/([a-zA-Z0-9_-]{1,100})\/lesson\/audio\?stage=([0-2])$/.exec(path || '');
     if (lesson) return { sessionId: lesson[1], takeIndex: null, thoughtId: null, lessonStage: Number(lesson[2]) };
     const match = /^\/api\/sessions\/([a-zA-Z0-9_-]{1,100})\/(?:takes\/(\d{1,4})|thoughts\/([a-zA-Z0-9_-]{1,100})\/audio)$/.exec(path || '');
@@ -310,6 +312,18 @@
       });
       return queue;
     }
+    function updateHeaders(headers = {}) {
+      if (closed || discarded) return Promise.resolve(status());
+      const values = { ...headers };
+      queue = queue.then(async () => {
+        if (failed || discarded) return status();
+        const next = { ...metadata, headers: { ...metadata.headers, ...values }, updated: Date.now() };
+        try { await writeRecording(next); Object.assign(metadata, next); }
+        catch (_) { failed = true; }
+        return status();
+      });
+      return queue;
+    }
     function finish(blob, extra = {}) {
       if (finishPromise) return finishPromise;
       closed = true;
@@ -345,7 +359,7 @@
       changed();
       return status();
     }
-    return { id, requestId, context, ready, append, finish, discard, seal, flush: () => queue };
+    return { id, requestId, context, ready, append, updateHeaders, finish, discard, seal, flush: () => queue };
   }
   function textKey(id) { return 'speech-trainer.text.v1|' + key(id); }
   function getText(id) {

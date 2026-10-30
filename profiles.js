@@ -121,6 +121,7 @@ window.TrainerProfiles = (() => {
           h('h2', null, profile.user.name || 'Участник'),
           profile.user.username ? h('p', { class: 'soft' }, `@${profile.user.username.replace(/^@/, '')}`) : null, previewLabel)),
       form,
+      window.TrainerAssessment ? TrainerAssessment.profileCard(app.state && app.state.assessment) : null,
       h('section', { class: 'card profile-history' }, h('h2', null, 'История занятий'),
         h('p', { class: 'soft' }, 'Ваши ответы, переделки и разборы тренера. Можно вернуться и сравнить разные попытки.'),
         h('a', { class: 'btn ghost', href: '#/history' }, 'Открыть историю', icon('arrow'))),

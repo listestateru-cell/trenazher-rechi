@@ -46,9 +46,10 @@ window.TrainerLessons = (() => {
       const launch = button('Получить текст', () => start(), true); controls.push(launch);
       render(ctx, h('div', { class: 'lesson-page' }, h('a', { class: 'back', href: '#/learn' }, icon('back'), 'Мысль и слово'),
         h('h1', null, meta.title),
-        h('section', { class: 'card lesson-blind-start' }, h('span', { class: 'chip' }, 'Около пяти минут чтения'),
+        h('section', { class: 'card lesson-blind-start' }, h('span', { class: 'chip' }, `Около ${{2:'двух',3:'трёх',5:'пяти'}[selected.reading_minutes] || 'пяти'} минут чтения`),
           h('h2', null, 'Новый отрывок'),
           h('p', null, 'Приложение выберет текст для вас. Автор и произведение будут в конце.'),
+          selected.adaptation ? h('p', { class: 'small soft' }, selected.adaptation.reason) : null,
           selected.resumable ? h('a', { class: 'btn ghost', href: `#/s/${enc(selected.resumable)}` }, 'Продолжить начатый пересказ', icon('arrow')) : null,
           error, launch,
           h('p', { class: 'small soft' }, 'После чтения текст скроется. Перескажите его по памяти, голосом или письменно. Время пересказа не ограничено.'))));
@@ -174,7 +175,7 @@ window.TrainerLessons = (() => {
         lastTask = taskKey;
         if (data.kind === 'retell') {
           replace(task, h('h2', null, data.phase === 'reading' ? 'Читайте в своём темпе' : 'Пересказ своими словами'),
-            data.phase === 'reading' ? h('p', { class: 'small soft' }, current.reading_minutes ? 'Примерно пять минут чтения. Перейдите к пересказу, когда будете готовы.' : 'Перейдите к пересказу, когда будете готовы.') : null,
+            data.phase === 'reading' ? h('p', { class: 'small soft' }, current.reading_minutes ? `Примерно ${{2:'две',3:'три',5:'пять'}[current.reading_minutes] || current.reading_minutes} ${current.reading_minutes === 5 ? 'минут' : 'минуты'} чтения. Перейдите к пересказу, когда будете готовы.` : 'Перейдите к пересказу, когда будете готовы.') : null,
             data.phase === 'reading' && current.context ? h('p', { class: 'small soft' }, current.context) : null,
             data.phase === 'reading' ? h('div', { class: `lesson-excerpt ${isPoetry(current.genre) ? 'is-poetry' : ''}` }, current.text || '') : h('p', { class: 'soft' }, 'Отрывок скрыт. Передайте своими словами то, что вы запомнили.'),
             data.phase === 'reading' ? citationNode(current.citation) : null,

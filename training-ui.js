@@ -42,17 +42,19 @@ window.TrainerTrainingUI = (() => {
   function grid(items, label) {
     return h('div', { class: 'training-app-grid', role: 'group', 'aria-label': label }, items);
   }
-  function scoreTrend(sessions) {
-    const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  const scoredValue = value => Number.isFinite(value) && value >= 0 && value <= 10;
+  function progressSessions(sessions) {
     const seen = new Set();
-    const eligible = (Array.isArray(sessions) ? sessions : []).filter(session => {
+    return (Array.isArray(sessions) ? sessions : []).filter(session => {
       if (!session || session.demonstration === true || typeof session.exercise !== 'string' || !session.exercise) return false;
+      if (session.assessment || /^assessment(?:_|$)/.test(session.exercise)) return false;
       const score = session.summary && session.summary.overall, analysis = session.analysis || {};
       const count = Array.isArray(session.plan) ? session.plan.length : session.plan;
       const takes = session.takes, indexes = analysis.takes;
       const revision = session.transcript_revision == null ? 0 : session.transcript_revision;
       const sourceRevision = analysis.source_revision == null ? 0 : analysis.source_revision;
-      if (!Number.isFinite(score) || score < 0 || score > 10 || analysis.status !== 'done' || analysis.transcript_stale
+      if (!scoredValue(score) || analysis.status !== 'done' || analysis.transcript_stale
         || revision !== sourceRevision || !Number.isInteger(count) || count < 1
         || !Array.isArray(takes) || takes.length !== count || takes.some(take => !take || take.status !== 'done')
         || !Array.isArray(indexes) || indexes.length !== count || new Set(indexes).size !== count
@@ -63,13 +65,20 @@ window.TrainerTrainingUI = (() => {
       if (session.id) seen.add(session.id);
       return true;
     }).slice().sort((a, b) => Date.parse(a.created) - Date.parse(b.created) || String(a.id || '').localeCompare(String(b.id || '')));
+  }
+  function progressPeriods(sessions) {
+    const eligible = progressSessions(sessions);
     const recent = eligible.slice(-5), previous = eligible.length >= 10 ? eligible.slice(-10, -5) : [];
+    const exercises = [...new Set(recent.map(session => session.exercise))].filter(exercise => previous.some(session => session.exercise === exercise)).sort();
+    return { eligible, recent, previous, exercises };
+  }
+  function scoreTrend(sessions) {
+    const { eligible, recent, previous, exercises } = progressPeriods(sessions);
     const result = { value: mean(recent.map(session => session.summary.overall)), previous: undefined, delta: null,
       comparedExercises: [], recentCount: recent.length, previousCount: previous.length, eligibleCount: eligible.length, comparisonReady: false,
       detail: !eligible.length ? 'Оценка появится после полного разбора упражнения.'
         : `Средняя оценка последних разборов (${recent.length} из пяти). Для сравнения нужны десять полных разборов и одинаковые виды упражнений в обеих сериях.` };
     if (eligible.length < 10) return result;
-    const exercises = [...new Set(recent.map(session => session.exercise))].filter(exercise => previous.some(session => session.exercise === exercise)).sort();
     if (!exercises.length) {
       result.detail = 'Средняя за последние пять тренировок. В предыдущей серии были другие упражнения, поэтому изменение уровня пока не сравниваем.';
       return result;
@@ -79,6 +88,39 @@ window.TrainerTrainingUI = (() => {
     result.comparedExercises = exercises; result.comparisonReady = true;
     result.detail = 'Сравниваем две отдельные серии по пять тренировок. Учитываем только одинаковые виды упражнений в обеих сериях; у каждого вида одинаковый вес.';
     return result;
+  }
+  function criteriaTrend(sessions, keys) {
+    const { eligible, recent, previous, exercises } = progressPeriods(sessions);
+    const score = (session, key) => (session.summary.scores || {})[key];
+    const values = (period, key, exercise) => period.filter(session => exercise == null || session.exercise === exercise)
+      .map(session => score(session, key)).filter(scoredValue);
+    const rows = (Array.isArray(keys) ? keys : []).map(key => {
+      const shared = exercises.filter(exercise => values(recent, key, exercise).length && values(previous, key, exercise).length);
+      const compared = shared.length > 0;
+      const value = compared ? mean(shared.map(exercise => mean(values(recent, key, exercise)))) : mean(values(recent, key));
+      const before = compared ? mean(shared.map(exercise => mean(values(previous, key, exercise)))) : null;
+      let note = null;
+      if (value == null) note = 'В последней серии тренер не оценивал этот критерий.';
+      else if (eligible.length >= 10 && !compared) note = 'Для этого критерия пока нет оценок одинаковых упражнений в обеих сериях.';
+      else if (compared && shared.length < exercises.length) note = 'Сравниваем только виды упражнений, где этот критерий оценён в обеих сериях.';
+      return { key, value, previous: before, comparisonReady: compared, comparedExercises: shared, note };
+    });
+    return { rows, eligibleCount: eligible.length, recentCount: recent.length, previousCount: previous.length,
+      comparisonReady: rows.some(row => row.comparisonReady),
+      detail: !eligible.length ? 'Оценки появятся после полного разбора упражнения.'
+        : eligible.length < 10 ? `Показаны оценки последних разборов (${recent.length} из пяти). Для сравнения нужны десять полных разборов.`
+          : !exercises.length ? 'В двух последних сериях по пять тренировок были разные упражнения. Показываем последние оценки без сравнения.'
+            : !rows.some(row => row.comparisonReady) ? 'Пока ни по одному критерию нет оценок одинаковых упражнений в обеих сериях. Показываем последние оценки без сравнения.'
+              : 'Сравниваем две отдельные серии по пять тренировок. В каждом критерии учитываем одинаковые виды упражнений с оценками в обеих сериях; у каждого вида одинаковый вес. Отсутствующие оценки не считаем нулями.' };
+  }
+  function programSessions(sessions, state, date) {
+    const scope = state.program_scope || (state.program && state.program.scope)
+      || (state.competition && state.competition.id ? 'group:' + state.competition.id : 'personal');
+    if (scope !== 'personal' && !/^group:.+/.test(scope)) return [];
+    const group = scope === 'personal' ? null : scope.slice(6);
+    return progressSessions(sessions).filter(session => session.program_day === date && !session.group_duel
+      && (!session.program_scope || session.program_scope === scope)
+      && (group ? session.group_id === group : !session.group_id));
   }
   const number = value => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(value);
   function progressGauge({ value = null, previous = null, title = 'Уровень речи', detail = '', max = 10 } = {}) {
@@ -106,5 +148,5 @@ window.TrainerTrainingUI = (() => {
         h('p', { class: 'training-gauge-trend' }, h('span', { 'aria-hidden': 'true' }, direction === 'up' ? '↗ ' : direction === 'down' ? '↘ ' : direction === 'steady' ? '→ ' : ''), hasValue ? trend : 'Появится после первого разбора'),
         detail ? h('p', { class: 'small soft' }, detail) : null), gauge);
   }
-  return { icon, tile, grid, scoreTrend, progressGauge };
+  return { icon, tile, grid, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge };
 })();

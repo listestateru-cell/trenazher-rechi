@@ -582,14 +582,15 @@ async function route() {
     if (key === 'admin') adminEntry.setAttribute('aria-current', 'page');
     else adminEntry.removeAttribute('aria-current');
   }
-  const navKey = { ex: 'home', s: 'home', learn: 'home', lessons: 'home', conversation: 'home' }[key] || key;
+  const navKey = { ex: 'home', s: 'home', learn: 'home', lessons: 'home', conversation: 'home', assessment: 'progress' }[key] || key;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   const root = $('#app');
   root.replaceChildren(h('div', { class: 'empty' }, h('div', { class: 'spinner', style: 'margin:0 auto' })));
   const ctx = { alive: () => token === routeToken, root };
   try {
     let view;
-    if (key === 'profile' && window.TrainerProfiles) view = await TrainerProfiles.view(ctx, parts, params);
+    if (key === 'assessment' && window.TrainerAssessment) view = await TrainerAssessment.view(ctx, parts[1]);
+    else if (key === 'profile' && window.TrainerProfiles) view = await TrainerProfiles.view(ctx, parts, params);
     else if (key === 'admin' && window.TrainerAdmin) view = await TrainerAdmin.view(ctx, parts);
     else if (key === 'groups' && parts[2] === 'duels' && window.TrainerDuels) view = await TrainerDuels.view(ctx, parts, params);
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
@@ -721,6 +722,7 @@ function rememberTopic(exId, topic) {
 async function HomeView(ctx) {
   const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
   app.state = state;
+  if (state.personalization) app.catalog = await api('/api/catalog');
   if (window.TrainerProfiles) TrainerProfiles.refreshHeader(state);
   const ps = programStatus(sessions, state);
   const lastByEx = {};
@@ -765,6 +767,7 @@ async function HomeView(ctx) {
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' },
           icon('upload'), 'Добавить на экран телефона')),
       today),
+    window.TrainerAssessment ? TrainerAssessment.homeCard(state.assessment) : null,
     window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
     h('section', { class: 'training-home-section', 'aria-labelledby': 'home-training-title' },
       h('div', { class: 'section-title' }, h('h2', { id: 'home-training-title' }, 'Тренировки')),
@@ -1024,7 +1027,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   };
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
+  if (state.personalization) app.catalog = await api('/api/catalog');
   if (sess) { v.session = sess; v.exId = sess.exercise; }
+  if (sess && sess.assessment && window.TrainerAssessment) return TrainerAssessment.view(ctx, sess.id);
   if (sess && sess.lesson && window.TrainerLessons) return TrainerLessons.session(ctx, sess);
   if (sess && sess.exercise === 'conversation' && window.TrainerConversations) return TrainerConversations.view(ctx, ['conversation', sess.id], params, sess);
   if (sess && isLearningSession(sess)) return LearningSessionView(ctx, sess);
@@ -1053,6 +1058,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
   if (v.session && v.groupId) v.ex = { ...v.ex, prep: v.session.group_prep ?? v.ex.prep,
     howto: v.session.group_howto || v.ex.howto, hint: v.session.group_hint || v.ex.hint };
+  if (v.session && v.session.personal_profile) v.ex = { ...v.ex, prep: v.session.personal_prep ?? v.ex.prep,
+    howto: v.session.personal_howto || v.ex.howto, hint: v.session.personal_hint || v.ex.hint };
   v.ex = exerciseInstructionsForDisplay(v.exId, v.ex, catalog().exercises[v.exId]);
   v.topic = v.session ? v.session.topic : (v.exId === 'coach'
     ? ((state.coach_next && state.coach_next.question) || catalog().first_coach_question)
@@ -2984,6 +2991,7 @@ async function HistoryView(ctx, params) {
   const filter = params.get('ex') || '';
   const sel = h('select', { 'aria-label': 'Упражнение' },
     h('option', { value: '' }, 'Все упражнения'),
+    h('option', { value: 'assessment', selected: filter === 'assessment' }, 'Контрольные срезы'),
     catalog().order.map((id) => h('option', { value: id, selected: id === filter }, catalog().exercises[id].title)),
     LEARNING_KINDS.map((kind) => h('option', { value: kind.id, selected: kind.id === filter }, kind.title)),
     window.TrainerLessons ? TrainerLessons.kinds.map((kind) => h('option', { value: 'lesson_' + kind.id, selected: 'lesson_' + kind.id === filter }, kind.title)) : null);
@@ -3014,6 +3022,9 @@ async function HistoryView(ctx, params) {
       } else if (sm) {
         stats.append(h('span', { class: 'chip num' }, `${f1(sm.fillers_per_min)} паразит./мин`), sm.wpm ? h('span', { class: 'chip num' }, `${sm.wpm} сл/мин`) : '',
           h('span', { class: 'score-pill' }, f1(sm.overall), h('small', null, '/10')));
+      } else if (x.assessment) {
+        const names = { ready: 'срез не начат', recording: 'чтение начато', processing: 'обработка записи', review: 'ожидает подтверждения', confirmed: 'срез сохранён', error: 'обработку можно повторить' };
+        stats.append(h('span', { class: 'chip' }, names[x.assessment.phase] || 'контрольный срез'));
       } else if (x.lesson) {
         stats.append(h('span', { class: 'chip' }, x.lesson.phase === 'complete' ? 'занятие завершено' : 'учебный урок'));
       } else if (x.learning_kind || st === 'practice') {
@@ -3155,10 +3166,12 @@ async function ProgressView(ctx) {
   const trend = typeof window !== 'undefined' && window.TrainerTrainingUI ? TrainerTrainingUI.scoreTrend(realSessions) : null;
   const speechGauge = trend ? TrainerTrainingUI.progressGauge({ value: trend.value, previous: trend.previous,
     title: 'Как меняется ваша речь', detail: trend.detail }) : null;
+  const assessmentCard = typeof window !== 'undefined' && window.TrainerAssessment ? TrainerAssessment.progressCard(state.assessment) : null;
   if (!done.length) {
     render(ctx, h('h1', { style: 'margin-bottom:18px' }, 'Прогресс'),
       demoNotice,
       speechGauge,
+      assessmentCard,
       skillProgressCard(skillData),
       h('div', { class: 'card empty' }, h('h3', null, 'Пока нечего сравнивать'), h('p', null, 'После первых разборов здесь появятся графики: паразиты, заминки, темп и оценки.'),
         h('p', { style: 'margin-top:14px' }, h('a', { class: 'btn', href: '#/' }, 'К упражнениям'))));
@@ -3168,7 +3181,7 @@ async function ProgressView(ctx) {
     const values = arr.filter(Number.isFinite);
     return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
   };
-  const first = done.slice(0, 5), recent = done.slice(-5);
+  const recent = done.slice(-5);
   const avgRecent = avg(recent.map((x) => x.summary.overall));
   const minutes = done.reduce((a, x) => a + (x.summary.speech_time || 0), 0) / 60;
   const days = new Set(done.map((x) => x.created.slice(0, 10))).size;
@@ -3205,16 +3218,22 @@ async function ProgressView(ctx) {
   });
 
   const crit = [['logic', 'Логика'], ['vocabulary', 'Словарный запас'], ['thinking_speed', 'Скорость мышления'], ['persuasiveness', 'Убедительность'], ['structure', 'Структура речи']];
-  const critAvg = (list, k) => avg(list.map((x) => x.summary.scores[k]));
+  const criteria = typeof window !== 'undefined' && window.TrainerTrainingUI ? TrainerTrainingUI.criteriaTrend(realSessions, crit.map(([key]) => key)) : null;
+  const critAvg = (list, k) => avg(list.map((x) => (x.summary.scores || {})[k]));
   const critCard = h('div', { class: 'card' },
-    h('div', { class: 'card-head' }, h('h2', null, 'Пять критериев'), h('span', { class: 'muted small' }, done.length >= 6 ? 'полоса — последние пять тренировок, риска — первые пять' : 'среднее по всем тренировкам')),
-    h('div', { class: 'meters', style: 'margin-top:4px' }, crit.map(([k, name]) => meterRow(name, critAvg(done.length >= 6 ? recent : done, k), null, done.length >= 6 ? critAvg(first, k) : null))));
+    h('div', { class: 'card-head' }, h('h2', null, 'Пять критериев'), h('span', { class: 'muted small' }, criteria && criteria.comparisonReady ? 'полоса — последняя серия, риска — предыдущая' : 'последние оценки без сравнения')),
+    criteria ? h('p', { class: 'small soft' }, criteria.detail) : null,
+    h('div', { class: 'meters', style: 'margin-top:4px' }, crit.map(([k, name]) => {
+      const row = criteria && criteria.rows.find(item => item.key === k);
+      return meterRow(name, row ? row.value : critAvg(recent, k), row ? row.note : null, row ? row.previous : null);
+    })));
 
   let checkCard = null;
   if (state.program_start) {
     const cols = catalog().checkpoint_days.map((dayN) => {
       const date = addDays(state.program_start, dayN - 1);
-      const list = done.filter((x) => x.program_day === date);
+      const list = typeof window !== 'undefined' && window.TrainerTrainingUI ? TrainerTrainingUI.programSessions(realSessions, state, date) : done.filter((x) =>
+        x.program_day === date && !x.group_duel && (state.competition ? x.group_id === state.competition.id : !x.group_id));
       if (!list.length) return { dayN, date, empty: true };
       const speech = list.reduce((a, x) => a + (x.summary.speech_time || 0), 0) / 60;
       const sum = (k) => list.reduce((a, x) => a + (x.summary[k] || 0), 0);
@@ -3239,7 +3258,7 @@ async function ProgressView(ctx) {
       ['Средняя оценка', 'overall', f1],
     ];
     checkCard = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('h2', null, 'Контрольные дни'), h('span', { class: 'muted small' }, 'всё, что сделано в программе в этот день')),
+      h('div', { class: 'card-head' }, h('h2', null, 'Контрольные дни'), h('span', { class: 'muted small' }, 'полные разборы выбранной программы за этот день')),
       h('div', { class: 'table-wrap' }, h('table', { class: 'data-table' },
         h('thead', null, h('tr', null, h('th', null, ''), cols.map((c) => h('th', { class: 'n' }, `День ${c.dayN}`)))),
         h('tbody', null, rows.map(([label, k, fmt]) => h('tr', null, h('td', null, label),
@@ -3268,6 +3287,7 @@ async function ProgressView(ctx) {
     h('div', { class: 'ex-head' }, h('h1', null, 'Прогресс')),
     demoNotice,
     speechGauge,
+    assessmentCard,
     kpis,
     skillProgressCard(skillData),
     h('div', { class: 'section-title' }, h('h2', null, 'Динамика'), h('span', { class: 'muted' }, 'каждая точка — тренировка с разбором'), h('span', { class: 'spacer' }), tableBtn),
@@ -3384,7 +3404,7 @@ function showHealth(hl) {
 async function boot() {
   if (window.TrainerConnection) await TrainerConnection.readyPromise;
   const savedRoute = prefs.get('lastRoute', '');
-  if ((!location.hash || location.hash === '#/') && /^#\/(s|ex|learn|lessons|program|progress|history)(\/|$)/.test(savedRoute)) history.replaceState(null, '', savedRoute);
+  if ((!location.hash || location.hash === '#/') && /^#\/(s|ex|learn|lessons|program|progress|history|assessment)(\/|$)/.test(savedRoute)) history.replaceState(null, '', savedRoute);
   $('#settings-btn').addEventListener('click', openSettings);
   try {
     [app.catalog, app.state] = await Promise.all([api('/api/catalog'), api('/api/state')]);

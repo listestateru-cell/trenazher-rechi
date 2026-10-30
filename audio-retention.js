@@ -5,6 +5,9 @@ window.TrainerAudioRetention = (() => {
   const active = attempt => ['processing', 'reviewing', 'running', 'queued', 'waiting', 'pending'].includes(attempt.status);
   function ready(session) {
     if (!session || session.demonstration || session.audio_removed && !session.conversation) return false;
+    if (session.assessment) return session.assessment.phase === 'confirmed' && !!session.assessment.confirmed_at
+      && !!(session.assessment.result || {}).usable && (session.takes || []).length === 1
+      && session.takes[0].status === 'done';
     const thoughts = session.thoughts || [];
     if (thoughts.some(thought => (thought.attempts || []).some(active))) return false;
     if (session.lesson) {

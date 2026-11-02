@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Тренажёр для речи</title>
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#161513">
+  <meta name="theme-color" content="#f4f7fc">
+  <meta name="trainer-ui-version" content="glass-20261103">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Речь">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23161513'/%3E%3Cpath d='M8 13v6M12 10v12M16 7v18M20 11v10M24 14v4' stroke='%23fdfcf9' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232459d6'/%3E%3Cpath d='M8 13v6M12 10v12M16 7v18M20 11v10M24 14v4' stroke='%23ffffff' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="connection.css">
   <link rel="stylesheet" href="mobile.css">
@@ -24,6 +25,8 @@
   <link rel="stylesheet" href="training-ui.css">
   <link rel="stylesheet" href="program-ui.css">
   <link rel="stylesheet" href="assessment.css">
+  <link rel="stylesheet" href="glass-ui.css">
+  <link rel="stylesheet" href="glass-home.css">
   <script>
     // Тема ставится до отрисовки, чтобы не мигало.
     try { const t = localStorage.getItem('tr.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
@@ -34,7 +37,9 @@
     <div class="topbar-in">
       <a class="brand" href="#/" aria-label="Тренажёр для речи — на главную">
         <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9"/><path d="M8 13v6M12 10v12M16 7v18M20 11v10M24 14v4"/></svg>
-        <span>Тренажёр для речи</span>
+        <span class="brand-name-full">Тренажёр для речи</span>
+        <span class="brand-name-mobile" aria-hidden="true">Тренажёр речи</span>
+        <span class="brand-name-tiny" aria-hidden="true">Речь</span>
       </a>
       <nav class="nav" aria-label="Разделы">
         <a href="#/" data-nav="home">Тренировка</a>

@@ -148,5 +148,101 @@ window.TrainerTrainingUI = (() => {
         h('p', { class: 'training-gauge-trend' }, h('span', { 'aria-hidden': 'true' }, direction === 'up' ? '↗ ' : direction === 'down' ? '↘ ' : direction === 'steady' ? '→ ' : ''), hasValue ? trend : 'Появится после первого разбора'),
         detail ? h('p', { class: 'small soft' }, detail) : null), gauge);
   }
-  return { icon, tile, grid, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge };
+
+  /* Главная использует те же серверные результаты и адреса, что и программа.
+     Визуальная карточка не создаёт попытку и не пересчитывает баллы курса. */
+  async function homeView(ctx) {
+    const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
+    if (!ctx.alive()) return null;
+    app.state = state;
+    if (state.personalization) {
+      const personalizedCatalog = await api('/api/catalog');
+      if (!ctx.alive()) return null;
+      app.catalog = personalizedCatalog;
+    }
+    if (window.TrainerProfiles) TrainerProfiles.refreshHeader(state);
+    const ps = programStatus(sessions, state), course = state.program || {};
+    const completed = ps.doneCount, total = ps.steps.length;
+    const finished = course.phase === 'finished';
+    const nextExercise = ps.next && catalog().exercises[ps.next.exercise];
+    const nextTask = ps.next && (course.today_tasks || []).find(task => task.exercise === ps.next.exercise);
+    const nextTitle = nextTask && nextTask.title || nextExercise && nextExercise.title || 'Следующее упражнение';
+    const nextIndex = ps.next ? ps.steps.findIndex(step => step.exercise === ps.next.exercise) + 1 : null;
+    const scopeTitle = state.competition && state.competition.name || course.title || 'Для себя';
+    const dayLabel = finished ? '30 дней пройдены' : ps.start && ps.dayN ? `День ${ps.dayN} из 30` : 'Курс на 30 дней';
+    const todayTitle = finished ? 'Курс завершён' : ps.next ? nextTitle : 'На сегодня всё';
+    const scopeDate = course.today && /^\d{4}-\d{2}-\d{2}$/.test(course.today) ? new Date(course.today + 'T12:00:00') : new Date();
+    const dateLabel = scopeDate.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+    const ctaLabel = ps.next && !finished ? ps.start ? 'Продолжить' : 'Начать тренировку' : 'Посмотреть прогресс';
+    const ctaHref = ps.next && !finished ? programHref(ps.next.exercise, state.competition) : '#/progress';
+    const streakValue = Number.isFinite(course.streak) ? course.streak : null;
+    const pointsValue = Number.isFinite(course.points) ? course.points : null;
+    const dayCaption = finished ? 'Все результаты и календарь сохранены.' : completed === total
+      ? 'Все упражнения выполнены. Завтра продолжим.' : `${completed} из ${total} упражнений выполнено`;
+    const today = h('section', { class: 'card today-card glass-home-today', 'aria-labelledby': 'home-today-title', 'data-home-today': '' },
+      h('div', { class: 'glass-home-today-top' }, h('span', { class: 'glass-home-eyebrow' }, 'Программа дня'), h('span', { class: 'chip' }, dayLabel)),
+      h('div', { class: 'glass-home-next' },
+        h('span', { class: `glass-home-next-icon training-tone-${tones[ps.next && ps.next.exercise] || 'blue'}`, 'aria-hidden': 'true' }, icon(ps.next && !finished ? ps.next.exercise : 'program')),
+        h('div', null, h('p', { class: 'glass-home-next-label' }, finished ? 'Хорошая работа' : ps.next ? `Упражнение ${nextIndex} из ${total}` : 'День закрыт'),
+          h('h2', { id: 'home-today-title' }, todayTitle))),
+      h('p', { class: 'glass-home-day-caption' }, dayCaption),
+      h('div', { class: 'steps glass-home-steps', role: 'img', 'aria-label': `Выполнено ${completed} из ${total} упражнений` }, ps.steps.map(step =>
+        h('span', { class: step.done ? 'done' : '', title: `${catalog().exercises[step.exercise]?.title || step.exercise}: ${step.done ? 'выполнено' : 'впереди'}`, 'aria-hidden': 'true' }))),
+      h('a', { class: 'btn glass-home-primary', href: ctaHref, 'data-home-continue': '' }, ctaLabel, window.icon('arrow')),
+      h('div', { class: 'glass-home-today-bottom' },
+        h('p', { class: 'glass-home-course-meta small' }, streakValue == null ? 'Пять коротких упражнений в день' : `Полных дней подряд: ${streakValue}`,
+          pointsValue == null ? null : h('span', null, ` · ${pointsValue} баллов`)),
+        h('a', { class: 'glass-home-program-link', href: '#/program' }, 'Вся программа', window.icon('arrow'))));
+    const lastByEx = {};
+    for (const session of doneSessions(sessions).slice().sort((a, b) => Date.parse(b.created) - Date.parse(a.created))) {
+      if (!isDemoSession(session) && !lastByEx[session.exercise]) lastByEx[session.exercise] = session;
+    }
+    const trainingTiles = catalog().order.map(id => {
+      const exercise = catalog().exercises[id], last = lastByEx[id];
+      const description = `${exercise.hint} ${durLabel(exercise)}${last ? `. Прошлая оценка ${f1(last.summary.overall)} из 10` : ''}`;
+      return tile({ title: id === 'duel' ? 'Поединок' : exercise.title, href: `#/ex/${id}`, icon: id,
+        description: id === 'duel' ? `${exercise.title}. ${description}` : description,
+        badge: last && Number.isFinite(last.summary.overall) ? f1(last.summary.overall) : null });
+    });
+    const conversationCard = window.TrainerConversations ? await TrainerConversations.homeCard() : null;
+    if (!ctx.alive()) return null;
+    if (conversationCard) trainingTiles.push(tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
+      description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
+    const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => tile({
+      title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
+    const learningTiles = LEARNING_KINDS.map(kind => tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title,
+      href: `#/learn/${kind.id}`, icon: kind.id, description: kind.description }));
+    learningTiles.push(tile({ title: 'Все задания', href: '#/learn', icon: 'all', description: 'Все задания на мысль, слова и пересказ.' }));
+    const trend = scoreTrend(sessions);
+    const progressNote = !Number.isFinite(trend.value) ? 'Появится после полного разбора упражнения.'
+      : trend.comparisonReady ? Math.abs(trend.delta) < .05 ? 'Оценка пока на том же уровне'
+        : `${trend.delta > 0 ? 'Выше' : 'Ниже'} на ${number(Math.abs(trend.delta))} в сравнении с предыдущей серией`
+        : `По последним полным разборам: ${trend.recentCount} из пяти`;
+    const progressCard = h('section', { class: 'card glass-home-progress', 'aria-labelledby': 'home-progress-title' },
+      h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-progress-title' }, 'Ваша речь'),
+        h('a', { href: '#/progress', class: 'glass-home-text-link' }, 'Прогресс', window.icon('arrow'))),
+      h('p', { class: 'glass-home-score' }, Number.isFinite(trend.value) ? number(trend.value) : '—', h('span', null, ' / 10')),
+      h('p', { class: 'soft' }, progressNote),
+      h('p', { class: 'small soft' }, 'Средняя оценка тренера. Баллы программы считаются отдельно.'));
+    const root = h('div', { class: 'glass-home', 'data-glass-home': '' },
+      h('header', { class: 'glass-home-heading' },
+        h('div', { class: 'glass-home-meta' }, h('p', { class: 'glass-home-date' }, dateLabel),
+          h('a', { href: '#/program', class: 'glass-home-scope', 'aria-label': `Программа: ${scopeTitle}. Выбрать программу.` }, scopeTitle, window.icon('arrow'))),
+        h('h1', null, 'Пора потренироваться'),
+        state.name ? h('p', { class: 'glass-home-greeting' }, state.name, ', начнём с программы дня.') : null),
+      today,
+      window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
+      h('section', { class: 'training-home-section glass-home-training', 'aria-labelledby': 'home-training-title' },
+        h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-training-title' }, 'Тренировки'), h('span', { class: 'small soft' }, 'В своём темпе')),
+        grid(trainingTiles, 'Упражнения для речи')),
+      h('section', { class: 'training-home-section glass-home-learning', 'aria-labelledby': 'home-learning-title' },
+        h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-learning-title' }, 'Мысль и слово')),
+        grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')),
+      h('div', { class: 'glass-home-lower' }, progressCard, window.TrainerAssessment ? TrainerAssessment.homeCard(state.assessment) : null),
+      h('aside', { class: 'glass-home-install' },
+        h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));
+    render(ctx, root);
+    return null;
+  }
+  return { icon, tile, grid, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge, homeView };
 })();

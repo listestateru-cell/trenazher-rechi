@@ -720,6 +720,7 @@ function rememberTopic(exId, topic) {
 
 /* ===================== главная ===================== */
 async function HomeView(ctx) {
+  if (window.TrainerTrainingUI && TrainerTrainingUI.homeView) return TrainerTrainingUI.homeView(ctx);
   const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
   app.state = state;
   if (state.personalization) app.catalog = await api('/api/catalog');

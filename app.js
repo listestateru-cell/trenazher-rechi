@@ -582,7 +582,7 @@ async function route() {
     if (key === 'admin') adminEntry.setAttribute('aria-current', 'page');
     else adminEntry.removeAttribute('aria-current');
   }
-  const navKey = { ex: 'home', s: 'home', learn: 'home', lessons: 'home', conversation: 'home', assessment: 'progress' }[key] || key;
+  const navKey = { ex: 'home', s: 'home', learn: 'home', lessons: 'home', imagination: 'home', conversation: 'home', assessment: 'progress' }[key] || key;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   const root = $('#app');
   root.replaceChildren(h('div', { class: 'empty' }, h('div', { class: 'spinner', style: 'margin:0 auto' })));
@@ -596,6 +596,7 @@ async function route() {
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
     else if (key === 'conversation' && window.TrainerConversations) view = await TrainerConversations.view(ctx, parts, params);
     else if (key === 'lessons' && window.TrainerLessons) view = await TrainerLessons.catalog(ctx, parts[1] || 'thought');
+    else if (key === 'imagination' && window.TrainerImagination) view = await TrainerImagination.catalog(ctx);
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);
@@ -755,6 +756,7 @@ async function HomeView(ctx) {
   });
   if (conversationCard) tiles.push(ui.tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
     description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
+  if (window.TrainerImagination) tiles.push(TrainerImagination.homeCard());
   const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => ui.tile({
     title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
   const learningTiles = LEARNING_KINDS.map(kind => ui.tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title, href: `#/learn/${kind.id}`, icon: kind.id, description: kind.description }));
@@ -1030,6 +1032,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   app.state = state;
   if (state.personalization) app.catalog = await api('/api/catalog');
   if (sess) { v.session = sess; v.exId = sess.exercise; }
+  if (sess && sess.imagination && window.TrainerImagination) return TrainerImagination.session(ctx, sess);
   if (sess && sess.assessment && window.TrainerAssessment) return TrainerAssessment.view(ctx, sess.id);
   if (sess && sess.lesson && window.TrainerLessons) return TrainerLessons.session(ctx, sess);
   if (sess && sess.exercise === 'conversation' && window.TrainerConversations) return TrainerConversations.view(ctx, ['conversation', sess.id], params, sess);
@@ -2176,7 +2179,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
   }
 
   function makeCard(initial) {
-    let p = initial, sending = false, mode = 'text', rec = null, recordTimer = 0, captureToken = 0, discardToken = 0, recordingContext = null, blob = null, previewUrl = '', contentKey = '';
+    let p = initial, sending = false, mode = initial.imagination ? 'voice' : 'text', rec = null, recordTimer = 0, captureToken = 0, discardToken = 0, recordingContext = null, blob = null, previewUrl = '', contentKey = '';
     let voiceDraft = null, voiceRecovery = null, stoppingVoice = null, preparingVoice = false, restoreVersion = 0;
     const card = h('article', { class: 'card thought-card', id: `thought-${p.id}` });
     const title = h('h3', { tabindex: -1 });
@@ -2242,7 +2245,15 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     const transferMessage = h('p');
     const nextAction = h('a', { class: 'btn', href: '#/learn/synonyms', hidden: true }, 'Выбрать другое действие', icon('arrow'));
     const transferArea = h('div', { class: 'learning-transfer', hidden: true }, transferMessage, transferButton, repeatMessage, repeatButton, nextAction);
-    card.append(h('div', { class: 'card-head' }, title, h('span', { class: 'spacer' }), phase), topicLabel, materials, task, comparisons, hints, h('div', { class: 'row' }, hintButton), form, transferArea);
+    const creative = p.imagination && window.TrainerImagination ? TrainerImagination.practice({ get: () => p, live, mutate, controls }) : null;
+    if (creative) {
+      card.classList.add('imagination-practice');
+      el.setAttribute('aria-label', 'Творческая практика');
+      form.querySelector('.thought-meaning').hidden = true;
+    }
+    card.append(...[h('div', { class: 'card-head' }, title, h('span', { class: 'spacer' }), phase), topicLabel,
+      ...(creative ? [task, creative.materials] : [materials, task]), comparisons, creative ? creative.directions : null, hints,
+      h('div', { class: 'row' }, hintButton), form, transferArea].filter(Boolean));
     const path = (suffix) => `/api/sessions/${session().id}${suffix}`;
     const pending = () => (p.attempts || []).some((a) => ['processing', 'reviewing'].includes(a.status));
 
@@ -2264,6 +2275,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     function submitText(e) {
       e.preventDefault();
       if (sending || pending() || active) return;
+      if (creative && !creative.ready()) return;
       const text = answer.value.trim();
       if (!text) { answer.focus(); return; }
       mutate(`/thoughts/${p.id}/attempts`, { method: 'POST', body: { text, intended_meaning: intent.value.trim() } }, () => {
@@ -2283,6 +2295,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
 
     async function beginVoice() {
       if (active || sending || preparingVoice || pending()) return;
+      if (creative && !creative.ready()) return;
       if (!canRecord()) { err.textContent = 'Сначала закончите текущую запись упражнения.'; err.hidden = false; return; }
       const token = ++captureToken;
       restoreVersion++;
@@ -2292,6 +2305,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       recordStatus.textContent = 'Включаю микрофон…';
       refreshControls();
       try {
+        if (creative) creative.beforeVoice();
         await mic.open();
         if (!live() || token !== captureToken) { if (active === controller) releaseMic(); return; }
         // Новая попытка не удаляет сохранённую копию предыдущей.
@@ -2311,6 +2325,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
         recordTimer = setInterval(() => {
           if (!rec) return;
           recordStatus.textContent = `Запись · ${mmss(rec.elapsed)}`;
+          if (creative) creative.tick(rec.elapsed);
           if (rec.elapsed >= 90) finishVoice();
         }, 250);
         err.hidden = true;
@@ -2439,6 +2454,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     }
     async function submitVoice() {
       if (!blob || blob.size < 1200 || sending || preparingVoice || pending() || active) return;
+      if (creative && !creative.ready()) return;
       const saved = voiceDraft, recovered = voiceRecovery, recorded = blob;
       if (recovered && recovered.playback !== 'ready') return;
       const owner = saved && saved.profile || recovered && recovered.profile || recordingContext && recordingContext.profile;
@@ -2545,6 +2561,15 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       if (statusText.textContent !== message) statusText.textContent = message;
       viewResult.hidden = !finished || sending || pending();
       viewResult.textContent = latest && latest.status === 'error' ? 'Посмотреть ошибку' : 'Посмотреть отзыв';
+      if (creative) {
+        creative.setBusy(blocked);
+        const ready = creative.ready();
+        recordButton.disabled = blocked || !ready;
+        submit.disabled = blocked || !ready || !answer.value.trim();
+        sendAudio.disabled = blocked || !ready || !blob || blob.size < 1200;
+        transferArea.hidden = true;
+        hintButton.hidden = true;
+      }
     }
     answer.addEventListener('input', controls);
 
@@ -2553,11 +2578,11 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       const key = JSON.stringify(p);
       if (key !== contentKey) {
         contentKey = key;
-        title.textContent = (p.learning_kind ? p.title : null) || p.goal || 'Сформулируйте мысль яснее';
+        title.textContent = creative ? 'Ваше задание' : (p.learning_kind ? p.title : null) || p.goal || 'Сформулируйте мысль яснее';
         topicLabel.hidden = (!p.learning_kind && p.practice_kind !== 'tip') || !p.topic;
         topicLabel.textContent = p.topic ? (p.transfer_from && p.transfer_type !== 'new_exercise' ? 'Новая тема: ' : 'Ситуация: ') + p.topic : '';
         task.textContent = p.task || 'Сохраните исходный смысл и попробуйте выразить его яснее.';
-        phase.textContent = p.practice_stage === 'repeat' ? 'Повтор позже' : p.transfer_type === 'new_exercise' ? 'Отдельное задание' : p.transfer_from ? 'Другая тема' : p.practice_kind === 'tip' ? 'Практика совета' : p.source === 'learning' ? 'Учебное задание' : 'Своя формулировка';
+        phase.textContent = creative ? 'Творческая практика' : p.practice_stage === 'repeat' ? 'Повтор позже' : p.transfer_type === 'new_exercise' ? 'Отдельное задание' : p.transfer_from ? 'Другая тема' : p.practice_kind === 'tip' ? 'Практика совета' : p.source === 'learning' ? 'Учебное задание' : 'Своя формулировка';
         materials.replaceChildren(...[learningMaterials(p),
           p.practice_kind === 'tip' && p.practice_stage === 'practice' ? h('div', { class: 'callout' }, h('h4', null, 'Ваш совет для практики'), h('p', null, p.source_tip)) : null,
           (p.source_revision || 0) < (session().transcript_revision || 0) ? h('p', { class: 'small soft' }, 'Эта практика относится к прежней версии расшифровки. Её исходник и ответы сохранены отдельно.') : null,
@@ -2585,26 +2610,33 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
         voiceInstruction.textContent = format ? 'Произнесите готовую реплику по условию. До 90 секунд: закончите запись, когда выразили мысль.' : 'Произнесите новую версию. До 90 секунд: закончите запись, когда выразили мысль.';
         intentSummary.textContent = p.source === 'learning' ? 'Добавить пояснение к ответу' : 'Уточнить, что я хотел сказать';
         intentLabel.textContent = p.source === 'learning' ? 'Что вы хотели выразить?' : 'Какой смысл важно сохранить?';
+        if (creative) {
+          creative.update();
+          answerLabel.textContent = 'Ваш ответ';
+          answer.placeholder = 'Расскажите свою версию. Можно придумывать любые детали.';
+          voiceInstruction.textContent = latestReviewForCreative() ? 'Попробуйте выбранный ход за 30–45 секунд. Запись можно закончить раньше; предел 90 секунд.' : 'Расскажите свою версию. До 90 секунд, можно закончить раньше.';
+          submit.replaceChildren('Отправить тренеру', icon('arrow'));
+        }
         comparisons.querySelectorAll('audio').forEach((a) => a.pause());
         const original = p.original || {};
         const originalAudio = original.audio ? h('audio', { controls: true, preload: 'metadata', src: url(`media/${session().id}/${original.audio}`), 'aria-label': 'Исходная запись' }) : null;
         if (originalAudio && original.start > 0) originalAudio.addEventListener('loadedmetadata', () => { originalAudio.currentTime = original.start; }, { once: true });
-        const before = newTipTopic && !original.text ? null : h('div', { class: 'thought-version' }, h('h4', null, p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from) ? 'Учебная ситуация' : 'Исходная фраза'), h('p', { class: 'thought-quote' }, original.text), originalAudio,
+        const before = creative || (newTipTopic && !original.text) ? null : h('div', { class: 'thought-version' }, h('h4', null, p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from) ? 'Учебная ситуация' : 'Исходная фраза'), h('p', { class: 'thought-quote' }, original.text), originalAudio,
           originalAudio ? h('p', { class: 'small soft' }, original.start != null ? `Фрагмент с ${mmss(original.start)}. Доступна вся исходная запись.` : 'Доступна вся исходная запись.') : null,
           original.context && original.context !== original.text ? (p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from)
             ? h('div', { class: 'learning-context' }, h('h5', null, 'Условия'), h('p', { class: 'thought-context' }, original.context))
             : h('details', null, h('summary', null, 'Контекст'), h('p', { class: 'thought-context' }, original.context))) : null);
         const attempts = p.attempts || [];
-        const after = h('div', { class: 'thought-versions' }, h('h4', null, attempts.length ? (p.source === 'learning' ? 'Ваши ответы' : 'Ваши новые версии') : 'Здесь появится ваш ответ'),
+        const after = creative && !attempts.length ? null : h('div', { class: 'thought-versions' }, h('h4', null, attempts.length ? (creative || p.source === 'learning' ? 'Ваши ответы' : 'Ваши новые версии') : 'Здесь появится ваш ответ'),
           !attempts.length ? h('p', { class: 'soft' }, newTipTopic ? 'Напишите или произнесите свой ответ. Тренер проверит тот же приём на новом содержании.' : 'Напишите или произнесите новую формулировку ниже. Исходная фраза останется для сравнения.') : null,
           [...attempts].reverse().map((a, reverseIndex) => {
             const review = a.review || {};
             const label = { improved: p.practice_kind === 'tip' ? 'Приём применён' : p.source === 'learning' ? 'Задание выполнено' : 'Стало яснее', needs_work: 'Можно доработать', unclear: 'Нужно уточнить смысл' }[review.assessment];
-            return h('div', { class: 'thought-version thought-attempt', id: `thought-attempt-${p.id}-${a.id}`, tabindex: -1 }, h('div', { class: 'row' }, h('h5', null, `Вариант ${attempts.length - reverseIndex}`), label ? h('span', { class: 'chip' }, label) : null),
+            const attemptCard = h('div', { class: 'thought-version thought-attempt', id: `thought-attempt-${p.id}-${a.id}`, tabindex: -1 }, h('div', { class: 'row' }, h('h5', null, `Вариант ${attempts.length - reverseIndex}`), label ? h('span', { class: 'chip' }, label) : null),
               a.text ? h('p', { class: 'thought-quote' }, a.text) : h('p', { class: 'soft' }, a.status === 'processing' ? 'Распознаю запись…' : 'Текст пока не распознан.'),
               a.audio ? h('audio', { controls: true, preload: 'metadata', src: url(`media/${session().id}/${a.audio}`), 'aria-label': `Запись новой формулировки, вариант ${attempts.length - reverseIndex}` }) : null,
               a.intended_meaning ? h('p', { class: 'small soft' }, 'Вы уточнили смысл: ', a.intended_meaning) : null,
-              a.status === 'done' ? h('div', { class: 'thought-review' },
+              a.status === 'done' && creative ? TrainerImagination.review(review, a) : a.status === 'done' ? h('div', { class: 'thought-review' },
                 h('p', null, review.feedback),
                 p.practice_kind === 'tip' ? h('p', { class: 'small soft' }, { yes: 'В этой попытке применение приёма видно.', no: 'Применение приёма пока не подтверждено.', unclear: 'По этому ответу применение приёма нельзя уверенно проверить.' }[review.goal_met] || 'Применение приёма требует проверки.') : null,
                 review.meaning_preserved ? h('p', { class: 'small soft' }, (p.source === 'learning' || (p.practice_kind === 'tip' && p.transfer_from)
@@ -2612,8 +2644,10 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
                   : { yes: 'Смысл сохранён.', no: 'Смысл изменился. Сверьтесь с исходной фразой.', unclear: 'Сохранение смысла требует уточнения.' })[review.meaning_preserved]) : null,
                 p.transfer_from && p.transfer_type !== 'new_exercise' && a.status === 'done' ? h('p', { class: 'small soft' }, a.hints_used === 0 ? 'Попытка на новой теме без открытых подсказок.' : 'Попытка на новой теме с помощью подсказок. Самостоятельный перенос пока не подтверждён.') : null,
                 review.next_hint ? h('p', { class: 'thought-next-hint' }, review.next_hint) : null) : null,
-              ['processing', 'reviewing'].includes(a.status) ? h('p', { class: 'small soft', role: 'status' }, a.status === 'processing' ? 'Распознаю речь…' : 'Тренер сравнивает формулировки…') : null,
+              ['processing', 'reviewing'].includes(a.status) ? h('p', { class: 'small soft', role: 'status' }, a.status === 'processing' ? 'Распознаю речь…' : creative ? 'Тренер разбирает вашу историю…' : 'Тренер сравнивает формулировки…') : null,
               a.status === 'error' ? h('div', null, h('p', { class: 'thought-error' }, a.error || 'Проверка не завершилась. Ваша версия сохранена.'), h('button', { class: 'btn ghost small', type: 'button', 'data-thought-retry': true, onclick: () => mutate(`/thoughts/${p.id}/attempts/${a.id}/retry`, { method: 'POST', body: {} }) }, icon('redo'), 'Повторить проверку')) : null);
+            return creative && reverseIndex > 0 ? h('details', { class: 'imagination-previous' },
+              h('summary', null, `Вариант ${attempts.length - reverseIndex}: ответ и разбор`), attemptCard) : attemptCard;
           }));
         comparisons.classList.toggle('single', !before);
         comparisons.replaceChildren(...[before, after].filter(Boolean));
@@ -2621,7 +2655,8 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       }
       controls();
     }
-    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
+    function latestReviewForCreative() { return (p.attempts || []).some(a => a.status === 'done'); }
+    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); if (creative) creative.destroy(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
     update(initial);
     restoreVoiceDraft();
     return controller;
@@ -2993,6 +3028,7 @@ async function HistoryView(ctx, params) {
   const sel = h('select', { 'aria-label': 'Упражнение' },
     h('option', { value: '' }, 'Все упражнения'),
     h('option', { value: 'assessment', selected: filter === 'assessment' }, 'Контрольные срезы'),
+    h('option', { value: 'imagination', selected: filter === 'imagination' }, 'Мастерская воображения'),
     catalog().order.map((id) => h('option', { value: id, selected: id === filter }, catalog().exercises[id].title)),
     LEARNING_KINDS.map((kind) => h('option', { value: kind.id, selected: kind.id === filter }, kind.title)),
     window.TrainerLessons ? TrainerLessons.kinds.map((kind) => h('option', { value: 'lesson_' + kind.id, selected: 'lesson_' + kind.id === filter }, kind.title)) : null);
@@ -3028,6 +3064,8 @@ async function HistoryView(ctx, params) {
         stats.append(h('span', { class: 'chip' }, names[x.assessment.phase] || 'контрольный срез'));
       } else if (x.lesson) {
         stats.append(h('span', { class: 'chip' }, x.lesson.phase === 'complete' ? 'занятие завершено' : 'учебный урок'));
+      } else if (x.exercise === 'imagination') {
+        stats.append(h('span', { class: 'chip' }, 'Творческая практика'));
       } else if (x.learning_kind || st === 'practice') {
         const p = x.learning_progress;
         stats.append(h('span', { class: 'chip' }, p && p.completed ? 'формулировка получилась' : 'учебное задание'));

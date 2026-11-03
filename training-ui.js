@@ -9,6 +9,7 @@ window.TrainerTrainingUI = (() => {
     compress: [['path', { d: 'M12 17h40M18 27h28M24 37h16M29 47h6' }]],
     sprint: [['path', { d: 'M36 8 18 34h13l-3 22 20-29H35l1-19Z' }]],
     explain: [['path', { d: 'M24 45h16M27 52h10M21 32a16 16 0 1 1 22 0c-3 2-4 5-4 7H25c0-2-1-5-4-7Z' }], ['path', { d: 'M27 22c1-3 3-4 6-4' }]],
+    imagination: [['path', { d: 'M24 44h16M27 51h10M23 32a14 14 0 1 1 18 0c-3 2-4 5-4 7H27c0-2-1-5-4-7Z' }], ['path', { d: 'm12 7 1.5 4.5L18 13l-4.5 1.5L12 19l-1.5-4.5L6 13l4.5-1.5ZM50 37l1.5 4.5L56 43l-4.5 1.5L50 49l-1.5-4.5L44 43l4.5-1.5Z' }]],
     duel: [['path', { d: 'M32 12v41M23 53h18M14 21h36M14 21 6 38a9 9 0 0 0 16 0l-8-17ZM50 21l-8 17a9 9 0 0 0 16 0l-8-17Z' }]],
     conversation: [['path', { d: 'M10 13h33v23H25l-9 7v-7h-6Z' }], ['path', { d: 'M43 24h11v24h-6v7l-10-7H28v-7' }], ['path', { d: 'M19 24h15' }]],
     thought: [['circle', { cx: 15, cy: 19, r: 6 }], ['circle', { cx: 46, cy: 18, r: 6 }], ['circle', { cx: 32, cy: 46, r: 7 }], ['path', { d: 'M22 19h17M18 25l10 14M43 25l-8 14' }]],
@@ -20,7 +21,7 @@ window.TrainerTrainingUI = (() => {
     program: [['rect', { x: 13, y: 14, width: 38, height: 39, rx: 7 }], ['path', { d: 'M23 8v12M41 8v12M13 27h38M24 39l6 6 12-12' }]],
     install: [['path', { d: 'M32 10v29M23 30l9 9 9-9M15 36v16h34V36' }]],
   };
-  const tones = { free: 'blue', coach: 'coral', minute: 'blue', compress: 'teal', sprint: 'amber', explain: 'green', duel: 'violet', conversation: 'rose', thought: 'indigo', retell: 'teal', clarify: 'amber', synonyms: 'coral', lexicon: 'violet', all: 'slate', program: 'blue' };
+  const tones = { free: 'blue', coach: 'coral', minute: 'blue', compress: 'teal', sprint: 'amber', explain: 'green', imagination: 'indigo', duel: 'violet', conversation: 'rose', thought: 'indigo', retell: 'teal', clarify: 'amber', synonyms: 'coral', lexicon: 'violet', all: 'slate', program: 'blue' };
   function svg(tag, attributes, ...children) {
     const element = document.createElementNS(NS, tag);
     for (const [name, value] of Object.entries(attributes || {})) element.setAttribute(name, String(value));
@@ -208,6 +209,7 @@ window.TrainerTrainingUI = (() => {
     if (!ctx.alive()) return null;
     if (conversationCard) trainingTiles.push(tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
       description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
+    if (window.TrainerImagination) trainingTiles.push(TrainerImagination.homeCard());
     const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => tile({
       title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
     const learningTiles = LEARNING_KINDS.map(kind => tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title,

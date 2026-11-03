@@ -10,6 +10,11 @@ window.TrainerAudioRetention = (() => {
       && session.takes[0].status === 'done';
     const thoughts = session.thoughts || [];
     if (thoughts.some(thought => (thought.attempts || []).some(active))) return false;
+    if (session.imagination) {
+      const attempts = thoughts.flatMap(thought => thought.attempts || []), last = attempts[attempts.length - 1];
+      const reviewed = attempt => attempt.status === 'done' && !!attempt.review && typeof attempt.text === 'string' && !!attempt.text.trim();
+      return attempts.filter(reviewed).length >= 2 && !!last && reviewed(last);
+    }
     if (session.lesson) {
       const attempts = session.lesson.attempts || [], last = attempts[attempts.length - 1];
       return session.lesson.phase === 'complete' && last && last.status === 'done' && !!last.review && !attempts.some(active);

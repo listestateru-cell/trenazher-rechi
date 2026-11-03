@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720" role="img" aria-labelledby="scene-title scene-description">
+  <title id="scene-title">Площадь после дождя</title>
+  <desc id="scene-description">Небольшая площадь с цветочной лавкой. Слева стоит бирюзовый велосипед с корзиной, в центре человек в красном плаще держит жёлтый шар. Справа человек в синем читает на скамейке, рядом рыжая собака с мячом. У лавки продавец в зелёном фартуке. На площади дерево, лужа, фиолетовый чемодан и красный зонт.</desc>
+  <defs>
+    <pattern id="paving" x="0" y="0" width="120" height="58" patternUnits="userSpaceOnUse">
+      <path d="M0 57H120M60 0V57" fill="none" stroke="#d8cabc" stroke-width="2"/>
+    </pattern>
+    <g id="flower">
+      <path d="M0 0V-24M0-8L-9-15M0-11L9-19" stroke="#47765c" stroke-width="4" stroke-linecap="round"/>
+      <circle cy="-28" r="8" fill="currentColor"/>
+      <circle cy="-28" r="3" fill="#f9cf65"/>
+    </g>
+    <g id="window">
+      <rect width="94" height="102" rx="13" fill="#f7edd9"/>
+      <rect x="8" y="8" width="78" height="86" rx="8" fill="#8eb9bd"/>
+      <path d="M47 8V94M8 51H86" stroke="#f7edd9" stroke-width="6"/>
+      <path d="M14 17L39 17L14 42" fill="#b8d4d0"/>
+    </g>
+    <g id="shoe"><path d="M0 0H21L28 9Q29 15 20 15H-4Q-9 11-5 4Z" fill="#36464a"/></g>
+  </defs>
+  <!-- Flat, authored illustration. No scripts, fonts, external images or animation. -->
+  <rect width="960" height="720" fill="#e7f0eb"/>
+  <circle cx="807" cy="89" r="43" fill="#f6d17a"/>
+  <path d="M21 88Q54 49 94 76Q131 67 143 101H21Z" fill="#f8faf5"/>
+  <path d="M680 63Q703 38 731 58Q756 47 778 77H680Z" fill="#f8faf5"/>
+  <!-- Buildings -->
+  <path d="M128 166L169 111H475L512 166Z" fill="#ad6655"/>
+  <path d="M150 155H488V460H150Z" fill="#e9bd89"/>
+  <path d="M496 115L529 74H837L865 115Z" fill="#65847c"/>
+  <path d="M510 111H849V464H510Z" fill="#d3ddd0"/>
+  <rect x="169" y="154" width="302" height="12" rx="5" fill="#b98466"/>
+  <rect x="516" y="107" width="329" height="12" rx="5" fill="#42685f"/>
+  <use href="#window" x="184" y="185"/>
+  <use href="#window" x="368" y="185"/>
+  <use href="#window" x="543" y="150"/>
+  <use href="#window" x="710" y="150"/>
+  <!-- A cat at the upper right window -->
+  <path d="M751 234Q733 234 734 220L734 207L743 213L752 207L761 213L770 207V223Q769 234 757 234Z" fill="#5b6264"/>
+  <path d="M767 229Q793 233 787 214" fill="none" stroke="#5b6264" stroke-width="7" stroke-linecap="round"/>
+  <path d="M742 222H744M758 222H760" stroke="#f8edcf" stroke-width="3" stroke-linecap="round"/>
+  <rect x="706" y="242" width="102" height="10" rx="4" fill="#f6ecd9"/>
+  <!-- Round clock on the flower shop -->
+  <circle cx="322" cy="222" r="30" fill="#f7edd9" stroke="#725549" stroke-width="6"/>
+  <path d="M322 202V222L337 232" fill="none" stroke="#725549" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="322" cy="222" r="4" fill="#725549"/>
+  <!-- Shop canopy and open doorway -->
+  <rect x="189" y="317" width="267" height="139" rx="8" fill="#4c6c65"/>
+  <rect x="353" y="329" width="89" height="127" rx="4" fill="#e6cfaa"/>
+  <rect x="366" y="344" width="61" height="82" rx="5" fill="#88b1a7"/>
+  <circle cx="432" cy="402" r="4" fill="#725549"/>
+  <path d="M174 285H466L486 324H154Z" fill="#477e73"/>
+  <path d="M195 285H233L225 324H183ZM271 285H309L308 324H263ZM347 285H385L394 324H349ZM423 285H461L480 324H437Z" fill="#eee7d1"/>
+  <path d="M154 324H486V339Q474 352 462 339Q450 352 438 339Q426 352 414 339Q402 352 390 339Q378 352 366 339Q354 352 342 339Q330 352 318 339Q306 352 294 339Q282 352 270 339Q258 352 246 339Q234 352 222 339Q210 352 198 339Q186 352 174 339Q162 352 154 339Z" fill="#477e73"/>
+  <rect x="569" y="295" width="67" height="160" rx="26" fill="#64847b"/>
+  <path d="M579 321H626V439H579Z" fill="#89aba0"/>
+  <circle cx="619" cy="385" r="4" fill="#eed5a6"/>
+  <rect x="695" y="295" width="104" height="88" rx="10" fill="#eee9d7"/>
+  <rect x="703" y="303" width="88" height="70" rx="6" fill="#8aafa8"/>
+  <path d="M747 303V373" stroke="#eee9d7" stroke-width="6"/>
+  <!-- Street -->
+  <path d="M0 451Q428 419 960 451V720H0Z" fill="#e8dac7"/>
+  <path d="M0 451Q428 419 960 451" fill="none" stroke="#cbb89e" stroke-width="10"/>
+  <path d="M0 478H960V720H0Z" fill="url(#paving)" opacity=".55"/>
+  <ellipse cx="484" cy="655" rx="107" ry="26" fill="#a9c7c8"/>
+  <path d="M410 650H452M489 668H544M506 642H554" stroke="#e5eeE5" stroke-width="5" stroke-linecap="round"/>
+  <!-- Tree and planter -->
+  <path d="M81 485L89 260L115 259L122 485Z" fill="#926d4e"/>
+  <path d="M98 349L59 304M105 324L145 276" stroke="#926d4e" stroke-width="14" stroke-linecap="round"/>
+  <path d="M21 211Q2 155 56 137Q55 92 103 95Q137 76 160 113Q204 111 204 157Q241 193 207 221Q211 264 162 272Q136 304 100 276Q43 291 32 251Q0 244 21 211Z" fill="#719667"/>
+  <path d="M39 179Q46 137 90 148M131 124Q158 117 172 142M155 246Q185 238 187 214" fill="none" stroke="#8cac79" stroke-width="15" stroke-linecap="round"/>
+  <path d="M56 466H150L139 510H67Z" fill="#b77d61"/>
+  <path d="M56 466H150" stroke="#8f624f" stroke-width="9" stroke-linecap="round"/>
+  <!-- Flower seller -->
+  <ellipse cx="292" cy="512" rx="58" ry="12" fill="#cbbca6"/>
+  <path d="M276 447L269 498M301 447L310 498" stroke="#4d5656" stroke-width="14" stroke-linecap="round"/>
+  <use href="#shoe" x="260" y="496"/>
+  <use href="#shoe" x="304" y="496"/>
+  <path d="M266 380Q287 367 308 380L323 436L301 449H270L254 431Z" fill="#f6e8c9"/>
+  <path d="M275 378L284 398H298L304 378L311 454H266Z" fill="#567f66"/>
+  <path d="M274 421H302V438H274Z" fill="#85a283"/>
+  <path d="M263 388L244 418L228 403M312 389L328 407" fill="none" stroke="#dca77d" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="288" cy="354" r="23" fill="#dca77d"/>
+  <path d="M267 352Q260 328 284 327Q312 324 310 354L300 343L279 342L273 359Z" fill="#654b40"/>
+  <circle cx="282" cy="355" r="2.5" fill="#4d413b"/>
+  <circle cx="298" cy="355" r="2.5" fill="#4d413b"/>
+  <path d="M285 366Q290 369 295 365" fill="none" stroke="#9f6651" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Flower buckets -->
+  <path d="M169 432H216L211 478H175Z" fill="#588594"/>
+  <path d="M214 447H253L249 486H219Z" fill="#bd785c"/>
+  <use href="#flower" x="181" y="434" color="#c7655b"/>
+  <use href="#flower" x="200" y="436" color="#eed176"/>
+  <use href="#flower" x="190" y="419" color="#f0e1c0"/>
+  <use href="#flower" x="227" y="449" color="#b896bd"/>
+  <use href="#flower" x="242" y="452" color="#cb7067"/>
+  <!-- Red umbrella drying by the door -->
+  <path d="M388 428V493Q387 506 377 504Q369 502 373 494" fill="none" stroke="#5d5750" stroke-width="5" stroke-linecap="round"/>
+  <path d="M353 433Q388 381 423 433Q410 423 398 433Q388 422 377 433Q365 424 353 433Z" fill="#c66a5c"/>
+  <path d="M388 400Q376 416 377 433M388 400Q399 416 398 433" fill="none" stroke="#a54d46" stroke-width="2.5"/>
+  <!-- Bicycle with a basket of baguettes -->
+  <ellipse cx="214" cy="620" rx="154" ry="19" fill="#cbbca6"/>
+  <g fill="none" stroke="#495957" stroke-width="7">
+    <circle cx="117" cy="575" r="49" fill="#e8dac7"/>
+    <circle cx="309" cy="575" r="49" fill="#e8dac7"/>
+  </g>
+  <g fill="none" stroke="#687c73" stroke-width="2.5">
+    <path d="M117 527V624M68 575H166M83 540L151 610M83 610L151 540M309 526V624M260 575H358M275 540L343 610M275 610L343 540"/>
+  </g>
+  <g fill="none" stroke="#3f8b8a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M117 575L171 500L220 575H117L195 514H286L220 575M286 514L309 575M287 515L279 480"/>
+  </g>
+  <path d="M165 497H194M274 479L282 469H307" fill="none" stroke="#485756" stroke-width="8" stroke-linecap="round"/>
+  <path d="M159 498L154 478H188" fill="none" stroke="#485756" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="220" cy="575" r="14" fill="#e4dac7" stroke="#6f7567" stroke-width="5"/>
+  <path d="M220 575L237 590H251" fill="none" stroke="#495957" stroke-width="5" stroke-linecap="round"/>
+  <path d="M292 476L287 437Q288 429 296 432L309 476M311 476L317 426Q319 419 326 422L334 476" fill="#e4b46f" stroke="#b8844b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M286 455H346L338 493H294Z" fill="#bd9565" stroke="#876f51" stroke-width="4"/>
+  <path d="M290 466H342M293 479H340M304 456L307 490M322 456V492" stroke="#e4c39a" stroke-width="3"/>
+  <!-- Balloon and person in a red coat -->
+  <path d="M512 342Q545 417 528 478" fill="none" stroke="#937a58" stroke-width="2.5"/>
+  <ellipse cx="507" cy="299" rx="30" ry="41" transform="rotate(-12 507 299)" fill="#edbd4f"/>
+  <path d="M494 279Q487 291 491 303" fill="none" stroke="#fbe19a" stroke-width="7" stroke-linecap="round"/>
+  <path d="M510 340L516 350L503 348Z" fill="#d5a33f"/>
+  <ellipse cx="503" cy="603" rx="45" ry="12" fill="#cbbca6"/>
+  <path d="M485 542L482 588M508 542L519 588" stroke="#4c5b62" stroke-width="16" stroke-linecap="round"/>
+  <use href="#shoe" x="470" y="584"/>
+  <use href="#shoe" x="511" y="584"/>
+  <path d="M477 453Q499 441 517 453L529 548H462Z" fill="#be5c50"/>
+  <path d="M491 454L496 475L507 453M496 475V544" fill="none" stroke="#8c453f" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M476 464L459 496L449 504M515 466L529 477L537 454" fill="none" stroke="#be5c50" stroke-width="17" stroke-linecap="round"/>
+  <path d="M538 456L538 448M449 505L441 510" fill="none" stroke="#e4b289" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="497" cy="423" r="24" fill="#e4b289"/>
+  <path d="M473 425Q463 401 486 395Q513 386 524 409Q508 411 500 405Q489 419 476 417L478 433Z" fill="#55443d"/>
+  <path d="M507 430Q510 433 514 429" fill="none" stroke="#ab6f56" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="506" cy="421" r="2.5" fill="#4d413b"/>
+  <!-- Bench -->
+  <ellipse cx="744" cy="566" rx="134" ry="15" fill="#cbbca6"/>
+  <g stroke="#6b766b" stroke-width="9" stroke-linecap="round">
+    <path d="M642 436V555M845 436V555M644 518H844"/>
+  </g>
+  <g fill="#ac7e53">
+    <rect x="626" y="430" width="238" height="19" rx="6"/>
+    <rect x="626" y="457" width="238" height="19" rx="6"/>
+    <rect x="626" y="486" width="238" height="22" rx="6"/>
+  </g>
+  <!-- Reader -->
+  <path d="M729 485L727 523L709 555M753 488L778 517L774 555" fill="none" stroke="#51525a" stroke-width="18" stroke-linecap="round"/>
+  <use href="#shoe" x="696" y="551"/>
+  <use href="#shoe" x="766" y="551"/>
+  <path d="M724 405Q746 395 762 410L769 483Q746 501 716 481Z" fill="#537d99"/>
+  <path d="M724 418L703 447L718 461M761 420L779 448L766 463" fill="none" stroke="#537d99" stroke-width="16" stroke-linecap="round"/>
+  <path d="M714 452L743 460L772 452L767 479L741 485L716 476Z" fill="#f3e6c6" stroke="#a58b62" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M743 460L741 485" stroke="#a58b62" stroke-width="3"/>
+  <circle cx="744" cy="378" r="24" fill="#b88460"/>
+  <path d="M721 379Q711 356 735 350Q763 346 769 371L760 373L751 363L734 366L729 383Z" fill="#4b443e"/>
+  <path d="M733 378H743M749 378H760M743 378H749" stroke="#564f47" stroke-width="3"/>
+  <path d="M739 390Q746 393 751 389" fill="none" stroke="#8f5e49" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Suitcase -->
+  <path d="M620 521V507Q620 499 629 499H641Q650 499 650 507V521" fill="none" stroke="#625668" stroke-width="5"/>
+  <rect x="611" y="518" width="49" height="67" rx="9" fill="#957a9c"/>
+  <path d="M626 529V571M645 529V571" stroke="#b29ab6" stroke-width="4" stroke-linecap="round"/>
+  <path d="M622 584V590M649 584V590" stroke="#625668" stroke-width="7" stroke-linecap="round"/>
+  <!-- Dog and ball -->
+  <ellipse cx="791" cy="650" rx="80" ry="15" fill="#cbbca6"/>
+  <path d="M745 597Q743 579 759 575Q786 571 811 585L831 582L839 609L824 621H764Q748 620 745 609Z" fill="#bb8451"/>
+  <path d="M752 604L748 640M774 611L779 641M811 610L817 640" stroke="#bb8451" stroke-width="12" stroke-linecap="round"/>
+  <path d="M811 594Q808 563 827 561Q845 562 846 583L866 591Q874 604 855 611L831 607Z" fill="#c9935e"/>
+  <path d="M822 563Q801 561 804 583Q807 598 819 590Z" fill="#805944"/>
+  <path d="M749 592Q727 593 724 571" fill="none" stroke="#bb8451" stroke-width="11" stroke-linecap="round"/>
+  <path d="M823 605L840 611" stroke="#587c73" stroke-width="7"/>
+  <circle cx="842" cy="583" r="3.5" fill="#493f36"/>
+  <ellipse cx="867" cy="594" rx="5" ry="4" fill="#493f36"/>
+  <circle cx="873" cy="645" r="16" fill="#c66858"/>
+  <path d="M863 633Q880 637 886 652M862 657Q872 644 882 634" fill="none" stroke="#f1c4a0" stroke-width="3"/>
+  <!-- Small foreground details -->
+  <path d="M70 669Q78 654 89 658Q82 676 70 669Z" fill="#bc8b52"/>
+  <path d="M346 675Q357 659 367 665Q361 682 346 675Z" fill="#a5a06a"/>
+  <path d="M927 462V571" stroke="#6f8375" stroke-width="7" stroke-linecap="round"/>
+  <path d="M911 464Q925 441 942 462L939 481H914Z" fill="#719283"/>
+  <path d="M914 462H939" stroke="#eed99f" stroke-width="10"/>
+</svg>

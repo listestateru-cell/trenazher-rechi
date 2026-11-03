@@ -6,7 +6,7 @@
   <title>Тренажёр для речи</title>
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f4f7fc">
-  <meta name="trainer-ui-version" content="glass-20261103">
+  <meta name="trainer-ui-version" content="glass-light-default-20261103">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Речь">
@@ -29,8 +29,12 @@
   <link rel="stylesheet" href="glass-home.css">
   <link rel="stylesheet" href="imagination.css">
   <script>
-    // Тема ставится до отрисовки, чтобы не мигало.
-    try { const t = localStorage.getItem('tr.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+    // Светлое стекло — начальный вид; системная тема включается явно.
+    try {
+      const t = localStorage.getItem('tr.theme');
+      if (t === 'auto') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light';
+    } catch (e) { document.documentElement.dataset.theme = 'light'; }
   </script>
 </head>
 <body>

@@ -1,3 +1,19 @@
+.imagination-home-card { display: flex; align-items: flex-start; gap: 20px; margin: 0; padding: 24px; color: var(--ink); }
+.imagination-home-card:hover { text-decoration: none; border-color: var(--accent); }
+.imagination-home-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.imagination-home-art { display: grid; place-items: center; flex: none; width: 64px; height: 64px; border-radius: 20px; color: var(--accent-ink); background: var(--surface-2); border: 1px solid var(--line-2); }
+.imagination-home-art .training-icon { width: 44px; height: 44px; }
+.imagination-home-copy { display: grid; gap: 10px; min-width: 0; }
+.imagination-home-copy h3 { font-size: 21px; line-height: 1.3; overflow-wrap: anywhere; }
+.imagination-home-copy p { font-size: 16px; line-height: 1.55; max-width: 640px; }
+.imagination-home-link { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent-ink); font-size: 15px; font-weight: 600; }
+.imagination-home-link svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+@media (max-width: 540px) {
+  .imagination-home-card { flex-direction: column; padding: 20px; gap: 16px; }
+  .imagination-home-copy h3 { font-size: 20px; }
+  .imagination-home-art { width: 56px; height: 56px; border-radius: 18px; }
+  .imagination-home-art .training-icon { width: 38px; height: 38px; }
+}
 .imagination-view { max-width: 1040px; margin-inline: auto; display: grid; gap: 24px; min-width: 0; }
 .imagination-view p { line-height: 1.55; }
 .imagination-view .soft { color: var(--ink-2); }

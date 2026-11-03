@@ -756,7 +756,6 @@ async function HomeView(ctx) {
   });
   if (conversationCard) tiles.push(ui.tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
     description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
-  if (window.TrainerImagination) tiles.push(TrainerImagination.homeCard());
   const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => ui.tile({
     title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
   const learningTiles = LEARNING_KINDS.map(kind => ui.tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title, href: `#/learn/${kind.id}`, icon: kind.id, description: kind.description }));
@@ -779,7 +778,8 @@ async function HomeView(ctx) {
     h('section', { class: 'training-home-section', 'aria-labelledby': 'home-learning-title' },
       h('div', { class: 'section-title' }, h('h2', { id: 'home-learning-title' }, 'Мысль и слово')),
       h('p', { class: 'soft training-home-intro' }, 'Учитесь связывать мысли, подбирать слова и пересказывать. Можно отвечать текстом или голосом.'),
-      ui.grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')));
+      ui.grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')),
+    window.TrainerImagination ? TrainerImagination.homeSection() : null);
   return null;
 }
 

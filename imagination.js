@@ -6,9 +6,16 @@ window.TrainerImagination = (() => {
   const latestReview = p => [...(p.attempts || [])].reverse().find(a => a.status === 'done' && a.review);
   const mediaOf = p => (p.imagination || {}).media || null;
 
-  function homeCard() {
-    return TrainerTrainingUI.tile({ title: 'Воображение', href: '#/imagination', icon: 'imagination',
-      description: 'Мастерская воображения. Фантазия и образное мышление: 13 форматов, вопросы тренера и вторая попытка.' });
+  function homeSection() {
+    return h('section', { class: 'training-home-section imagination-home', 'aria-labelledby': 'home-imagination-title' },
+      h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-imagination-title' }, title)),
+      h('a', { class: 'card imagination-home-card', href: '#/imagination' },
+        h('span', { class: 'imagination-home-art', 'aria-hidden': 'true' }, TrainerTrainingUI.icon('imagination')),
+        h('div', { class: 'imagination-home-copy' },
+          h('span', { class: 'small soft' }, '13 форматов · голосом или текстом'),
+          h('h3', null, 'Фантазия и образное мышление'),
+          h('p', { class: 'soft' }, 'Придумывайте истории, соединяйте неожиданные образы. Вопросы тренера помогут найти новый ход и развить свою идею.'),
+          h('span', { class: 'imagination-home-link' }, 'Открыть мастерскую', icon('arrow')))));
   }
 
   async function catalog(ctx) {
@@ -242,5 +249,5 @@ window.TrainerImagination = (() => {
     return { materials, directions, ready, setBusy, update, beforeVoice, tick,
       destroy() { destroyed = true; clearInterval(timer); beforeVoice(); } };
   }
-  return { catalog, session, homeCard, review, practice };
+  return { catalog, session, homeSection, review, practice };
 })();

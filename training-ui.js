@@ -209,7 +209,6 @@ window.TrainerTrainingUI = (() => {
     if (!ctx.alive()) return null;
     if (conversationCard) trainingTiles.push(tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
       description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
-    if (window.TrainerImagination) trainingTiles.push(TrainerImagination.homeCard());
     const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => tile({
       title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
     const learningTiles = LEARNING_KINDS.map(kind => tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title,
@@ -240,6 +239,7 @@ window.TrainerTrainingUI = (() => {
       h('section', { class: 'training-home-section glass-home-learning', 'aria-labelledby': 'home-learning-title' },
         h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-learning-title' }, 'Мысль и слово')),
         grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')),
+      window.TrainerImagination ? TrainerImagination.homeSection() : null,
       h('div', { class: 'glass-home-lower' }, progressCard, window.TrainerAssessment ? TrainerAssessment.homeCard(state.assessment) : null),
       h('aside', { class: 'glass-home-install' },
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));

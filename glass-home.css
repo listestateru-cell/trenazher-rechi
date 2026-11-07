@@ -310,3 +310,98 @@
   .glass-home .training-tile-art, .glass-home .btn { transition: none; }
   .glass-home .training-tile:hover .training-tile-art, .glass-home .training-tile:active .training-tile-art, .glass-home .btn:active { transform: none; }
 }
+
+/* Три главных действия собраны в бенто; геометрия каруселей ниже независима. */
+.glass-home .home-bento {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-areas: "today progress" "today start";
+  gap: 16px;
+  min-width: 0;
+  align-items: stretch;
+}
+.glass-home .home-bento > .glass-home-today {
+  grid-area: today;
+  min-width: 0;
+  margin: 0;
+  padding: 26px;
+  gap: 17px;
+}
+.glass-home .home-bento > .glass-home-today .glass-home-primary { margin-top: auto; }
+.glass-home .home-bento-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 180px;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid var(--home-glass-line);
+  border-radius: 28px;
+  background: var(--home-glass);
+  box-shadow: var(--home-shadow);
+  color: var(--ink);
+  text-decoration: none;
+  text-align: left;
+  touch-action: manipulation;
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  transition: background 160ms ease-out, border-color 160ms ease-out;
+}
+.glass-home .home-bento-progress {
+  grid-area: progress;
+  background: linear-gradient(145deg, var(--home-glass), color-mix(in srgb, var(--track) 30%, var(--home-glass)));
+}
+.glass-home .home-bento-start { grid-area: start; }
+.glass-home .home-bento-card:hover { color: var(--ink); text-decoration: none; border-color: var(--line-2); }
+.glass-home .home-bento-card:active { background: var(--surface-2); border-color: var(--accent); }
+.glass-home .home-bento-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; }
+.glass-home .home-bento-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 11px;
+  background: var(--track);
+  color: var(--accent-ink);
+}
+.glass-home .home-bento-icon .training-icon { width: 24px; height: 24px; stroke-width: 2.6; }
+.glass-home .home-bento-arrow { display: block; width: 20px; height: 20px; flex: none; color: var(--home-soft-ink); }
+.glass-home .home-bento-card-top > svg, .glass-home .home-bento-arrow svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.glass-home .home-bento-card h2 { margin: 0; font-size: 19px; font-weight: 650; line-height: 1.25; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.glass-home .home-bento-card p { margin: 0; }
+.glass-home .home-bento-card .glass-home-score { font-size: 38px; line-height: 1.05; }
+.glass-home .home-bento-card .glass-home-score > span { font-size: 15px; }
+.glass-home .home-bento-score { display: grid; gap: 3px; min-width: 0; }
+.glass-home .home-bento-label { color: var(--home-soft-ink); font-size: 12px; line-height: 1.4; }
+.glass-home .home-bento-note, .glass-home .home-bento-description { color: var(--home-soft-ink); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.glass-home .home-bento-card .home-bento-card-action { margin-top: auto; padding-top: 8px; color: var(--accent-ink); font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .glass-home .home-bento {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "today today" "progress start";
+    gap: 12px;
+  }
+  .glass-home .home-bento > .glass-home-today { padding: 16px; gap: 10px; border-radius: 26px; }
+  .glass-home .home-bento .glass-home-next-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .glass-home .home-bento .glass-home-next-icon .training-icon { width: 32px; height: 32px; }
+  .glass-home .home-bento > .glass-home-today .glass-home-primary { min-height: 48px; padding-block: 11px; }
+  .glass-home .home-bento-card { gap: 5px; min-height: 214px; padding: 14px; border-radius: 24px; }
+  .glass-home .home-bento-card h2 { font-size: 17px; }
+  .glass-home .home-bento-card .glass-home-score { font-size: 35px; }
+  .glass-home .home-bento-icon { width: 30px; height: 30px; border-radius: 10px; }
+  .glass-home .home-bento-icon .training-icon { width: 22px; height: 22px; }
+  .glass-home .home-bento-card .home-bento-card-action { padding-top: 5px; }
+}
+@media (max-width: 350px) {
+  .glass-home .home-bento { gap: 10px; }
+  .glass-home .home-bento > .glass-home-today { padding: 16px; }
+  .glass-home .home-bento-card { padding: 14px 12px; gap: 5px; border-radius: 22px; }
+  .glass-home .home-bento-card h2 { font-size: 16px; }
+  .glass-home .home-bento-card .glass-home-score { font-size: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-home .home-bento-card { transition: none; }
+}

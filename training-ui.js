@@ -19,6 +19,8 @@ window.TrainerTrainingUI = (() => {
     lexicon: [['path', { d: 'M15 12h31a5 5 0 0 1 5 5v36H17a5 5 0 0 1-5-5V17a5 5 0 0 1 5-5M12 44h39M24 35l8-16 8 16M27 29h10' }]],
     all: [['rect', { x: 12, y: 12, width: 15, height: 15, rx: 3 }], ['rect', { x: 37, y: 12, width: 15, height: 15, rx: 3 }], ['rect', { x: 12, y: 37, width: 15, height: 15, rx: 3 }], ['rect', { x: 37, y: 37, width: 15, height: 15, rx: 3 }]],
     program: [['rect', { x: 13, y: 14, width: 38, height: 39, rx: 7 }], ['path', { d: 'M23 8v12M41 8v12M13 27h38M24 39l6 6 12-12' }]],
+    progress: [['path', { d: 'M12 12v40h42M20 39l11-12 10 6 13-18M43 15h11v11' }]],
+    assessment: [['circle', { cx: 32, cy: 32, r: 21 }], ['circle', { cx: 32, cy: 32, r: 11 }], ['circle', { cx: 32, cy: 32, r: 2 }], ['path', { d: 'M32 6v7M32 51v7M6 32h7M51 32h7' }]],
     install: [['path', { d: 'M32 10v29M23 30l9 9 9-9M15 36v16h34V36' }]],
   };
   const tones = { free: 'blue', coach: 'coral', minute: 'blue', compress: 'teal', sprint: 'amber', explain: 'green', imagination: 'indigo', duel: 'violet', conversation: 'rose', thought: 'indigo', retell: 'teal', clarify: 'amber', synonyms: 'coral', lexicon: 'violet', all: 'slate', program: 'blue' };
@@ -296,26 +298,33 @@ window.TrainerTrainingUI = (() => {
     const learningShelf = shelf({ id: 'learning', title: 'Мысль и слово', items: [...lessonItems, ...learningItems], label: 'Задания на мысль и слово' });
     const imaginationSection = window.TrainerImagination ? TrainerImagination.homeSection(imaginationData) : null;
     const trend = scoreTrend(sessions);
-    const progressNote = !Number.isFinite(trend.value) ? 'Появится после полного разбора упражнения.'
-      : trend.comparisonReady ? Math.abs(trend.delta) < .05 ? 'Оценка пока на том же уровне'
-        : `${trend.delta > 0 ? 'Выше' : 'Ниже'} на ${number(Math.abs(trend.delta))} в сравнении с предыдущей серией`
-        : `По последним полным разборам: ${trend.recentCount} из пяти`;
-    const progressCard = h('section', { class: 'card glass-home-progress', 'aria-labelledby': 'home-progress-title' },
-      h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-progress-title' }, 'Ваша речь'),
-        h('a', { href: '#/progress', class: 'glass-home-text-link' }, 'Прогресс', window.icon('arrow'))),
-      h('p', { class: 'glass-home-score' }, Number.isFinite(trend.value) ? number(trend.value) : '—', h('span', null, ' / 10')),
-      h('p', { class: 'soft' }, progressNote),
-      h('p', { class: 'small soft' }, 'Средняя оценка тренера. Баллы программы считаются отдельно.'));
+    const progressNote = !Number.isFinite(trend.value) ? 'После первого полного разбора'
+      : trend.comparisonReady ? Math.abs(trend.delta) < .05 ? 'На уровне прошлой серии'
+        : `На ${number(Math.abs(trend.delta))} ${trend.delta > 0 ? 'выше' : 'ниже'} прошлой серии`
+        : `По последним разборам: ${trend.recentCount} из 5`;
+    const progressCard = h('a', { class: 'card glass-home-progress home-bento-card home-bento-progress', href: '#/progress', 'aria-labelledby': 'home-progress-title', 'aria-describedby': 'home-progress-label home-progress-value home-progress-summary' },
+      h('div', { class: 'home-bento-card-top' }, h('span', { class: 'home-bento-icon' }, icon('progress')), window.icon('arrow', 'home-bento-arrow')),
+      h('h2', { id: 'home-progress-title' }, 'Прогресс'),
+      h('div', { class: 'home-bento-score' },
+        h('span', { class: 'home-bento-label', id: 'home-progress-label' }, 'Оценка тренера'),
+        h('p', { class: 'glass-home-score', id: 'home-progress-value' }, Number.isFinite(trend.value) ? number(trend.value) : '—', h('span', null, ' / 10'))),
+      h('p', { class: 'home-bento-note', id: 'home-progress-summary' }, progressNote),
+      h('p', { class: 'home-bento-card-action' }, 'Подробнее'));
+    const assessment = state.assessment || {};
+    const hasBaseline = (Array.isArray(assessment.history) ? assessment.history : []).some(item => item.confirmed || item.confirmed_at || item.phase === 'confirmed');
+    const startCard = h('a', { class: 'card home-bento-card home-bento-start', href: '#/assessment', 'aria-labelledby': 'home-start-title', 'aria-describedby': 'home-start-summary' },
+      h('div', { class: 'home-bento-card-top' }, h('span', { class: 'home-bento-icon' }, icon('assessment')), window.icon('arrow', 'home-bento-arrow')),
+      h('h2', { id: 'home-start-title' }, 'Точка старта'),
+      h('p', { class: 'home-bento-description', id: 'home-start-summary' }, hasBaseline ? 'Сравните чтение с первым срезом.' : 'Короткий опрос и минута чтения вслух.'),
+      h('p', { class: 'home-bento-card-action' }, hasBaseline ? 'Мои срезы' : 'Пройти срез'));
     const root = h('div', { class: 'glass-home', 'data-glass-home': '' },
       h('header', { class: 'glass-home-heading' },
         h('div', { class: 'glass-home-meta' }, h('p', { class: 'glass-home-date' }, dateLabel),
           h('a', { href: '#/program', class: 'glass-home-scope', 'aria-label': `Программа: ${scopeTitle}. Выбрать программу.` }, scopeTitle, window.icon('arrow'))),
-        h('h1', null, 'Пора потренироваться'),
-        state.name ? h('p', { class: 'glass-home-greeting' }, state.name, ', начнём с программы дня.') : null),
-      today,
+        h('h1', null, 'Пора потренироваться')),
+      h('div', { class: 'home-bento', 'data-home-bento': '' }, today, progressCard, startCard),
       window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
       trainingShelf, learningShelf, imaginationSection,
-      h('div', { class: 'glass-home-lower' }, progressCard, window.TrainerAssessment ? TrainerAssessment.homeCard(state.assessment) : null),
       h('aside', { class: 'glass-home-install' },
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));
     render(ctx, root);

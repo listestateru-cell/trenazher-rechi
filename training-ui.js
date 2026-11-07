@@ -51,10 +51,10 @@ window.TrainerTrainingUI = (() => {
     const next = h('button', { type: 'button', class: 'home-shelf-arrow', 'aria-label': `Следующая карточка: ${title}`, 'aria-controls': trackId }, window.icon('arrow'));
     const cards = entries.map((item, index) => h('a', {
       class: `home-shelf-card training-tone-${item.tone || tones[item.icon] || 'blue'}`,
-      href: item.href,
+      href: item.href, draggable: 'false',
       'aria-label': [item.title, item.description, item.meta, item.badge == null ? '' : `Прошлая оценка ${item.badge} из 10`]
         .filter(Boolean).map(part => String(part).trim().replace(/\.+$/, '')).join('. '),
-      style: `--shelf-tilt:${[-2, 2, -1.5, 2.5][index % 4]}deg`, 'data-active': index === 0 ? 'true' : 'false',
+      'data-active': index === 0 ? 'true' : 'false',
     },
     h('span', { class: 'home-shelf-cover', 'aria-hidden': 'true' },
       h('span', { class: 'home-shelf-kicker' }, item.kicker || String(index + 1).padStart(2, '0')),
@@ -62,102 +62,45 @@ window.TrainerTrainingUI = (() => {
     h('span', { class: 'home-shelf-title' }, item.title),
     item.description ? h('span', { class: 'home-shelf-description' }, item.description) : null,
     h('span', { class: 'home-shelf-meta' }, h('span', null, item.meta || 'Открыть задание'),
-      item.badge == null ? window.icon('arrow') : h('span', { class: 'home-shelf-score' }, 'Оценка ', item.badge))));
-    const track = h('div', { id: trackId, class: 'home-shelf-track', role: 'group', 'aria-label': label }, cards);
+      item.badge == null ? null : h('span', { class: 'home-shelf-score' }, 'Оценка ', item.badge))));
+    const track = h('div', { id: trackId, class: 'home-shelf-track', role: 'group', 'aria-label': label,
+      'aria-roledescription': 'Карусель', 'data-layout': 'fallback' }, cards);
+    const currentTitle = h('h3', { class: 'home-shelf-current-title' });
+    const currentDescription = h('p', { class: 'home-shelf-current-description' });
+    const currentMeta = h('div', { class: 'home-shelf-current-meta' });
+    const caption = h('div', { class: 'home-shelf-caption' }, currentTitle, currentDescription, currentMeta);
     const section = h('section', { class: 'training-home-section home-shelf', 'aria-labelledby': titleId, 'data-home-shelf': id },
       h('div', { class: 'glass-home-section-heading home-shelf-heading' }, h('h2', { id: titleId }, title),
-        h('div', { class: 'home-shelf-controls', 'aria-label': `Перелистывание: ${title}` }, counter, previous, next)), track);
-    let destroyed = false, current = 0, requestedIndex = null, frame = 0, settle = 0;
-    const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    function announce() {
-      if (destroyed) return;
-      const value = entries.length ? `${current + 1} / ${entries.length}` : '0 / 0';
-      if (counter.textContent !== value) counter.textContent = value;
-    }
-    function activate(index) {
-      current = Math.max(0, Math.min(cards.length - 1, index));
-      cards.forEach((card, i) => card.setAttribute('data-active', String(i === current)));
-    }
-    function update() {
-      frame = 0;
-      if (destroyed) return;
-      const width = track.clientWidth || 0, left = track.scrollLeft || 0;
-      if (width && typeof track.getBoundingClientRect === 'function') {
-        const edge = track.getBoundingClientRect().left;
-        const atEnd = track.scrollWidth > width + 2 && left >= track.scrollWidth - width - 2;
-        const nearest = cards.reduce((best, card, i) => {
-          const distance = Math.abs(card.getBoundingClientRect().left - edge);
-          return distance < best.distance ? { index: i, distance } : best;
-        }, { index: 0, distance: Infinity });
-        activate(requestedIndex == null ? atEnd ? cards.length - 1 : nearest.index : requestedIndex);
-        previous.disabled = requestedIndex == null ? left <= 2 : requestedIndex === 0;
-        next.disabled = track.scrollWidth <= width + 2 || (requestedIndex == null ? atEnd : requestedIndex === cards.length - 1);
-      } else {
-        previous.disabled = current === 0;
-        next.disabled = cards.length < 2 || current >= cards.length - 1;
+        h('div', { class: 'home-shelf-controls', 'aria-label': `Перелистывание: ${title}` }, counter, previous, next)), track, caption);
+    let activeCaption = -1, captionAnimation = null;
+    function changed(index) {
+      if (index === activeCaption) return;
+      const animate = activeCaption >= 0;
+      activeCaption = index;
+      const item = entries[index];
+      counter.textContent = item ? `${index + 1} / ${entries.length}` : '0 / 0';
+      currentTitle.textContent = item && item.title || '';
+      currentDescription.textContent = item && item.description || '';
+      currentMeta.replaceChildren(...(item ? [
+        h('span', null, item.meta || 'Открыть задание'),
+        item.badge == null ? null : h('span', { class: 'home-shelf-score' }, 'Последняя оценка ', item.badge),
+      ].filter(Boolean) : []));
+      if (captionAnimation) captionAnimation.cancel();
+      if (animate && typeof currentTitle.animate === 'function'
+        && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+        captionAnimation = currentTitle.animate([{ opacity: .25, transform: 'translateY(7px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180, easing: 'ease-out' });
       }
     }
-    function schedule() {
-      if (destroyed) return;
-      if (typeof requestAnimationFrame === 'function') {
-        if (!frame) frame = requestAnimationFrame(update);
-      } else update();
+    changed(0);
+    let controller = null;
+    if (window.TrainerArcCarousel && typeof TrainerArcCarousel.mount === 'function') {
+      track.setAttribute('data-layout', 'arc');
+      controller = TrainerArcCarousel.mount({ id, track, cards, previous, next, onChange: changed });
+    } else {
+      previous.hidden = next.hidden = true;
+      caption.hidden = true;
     }
-    function settled() {
-      settle = 0;
-      requestedIndex = null;
-      update(); announce();
-    }
-    function waitForSettle() {
-      if (typeof setTimeout !== 'function') return;
-      if (settle && typeof clearTimeout === 'function') clearTimeout(settle);
-      settle = setTimeout(settled, 160);
-    }
-    function go(index, focus = false) {
-      if (destroyed || !cards.length) return;
-      const target = Math.max(0, Math.min(cards.length - 1, index));
-      if (focus && typeof cards[target].focus === 'function') cards[target].focus({ preventScroll: true });
-      requestedIndex = target;
-      activate(target);
-      if (typeof cards[target].getBoundingClientRect === 'function' && typeof track.getBoundingClientRect === 'function') {
-        const position = Number.isFinite(cards[target].offsetLeft) && Number.isFinite(cards[0].offsetLeft)
-          ? cards[target].offsetLeft - cards[0].offsetLeft
-          : cards[target].getBoundingClientRect().left - cards[0].getBoundingClientRect().left;
-        if (typeof track.scrollTo === 'function') track.scrollTo({ left: Math.max(0, position), behavior: reduced() ? 'auto' : 'smooth' });
-        else track.scrollLeft = Math.max(0, position);
-      }
-      announce(); schedule(); waitForSettle();
-    }
-    const back = () => go(current - 1), forward = () => go(current + 1);
-    const keydown = event => {
-      const index = cards.findIndex(card => card === event.target || (typeof card.contains === 'function' && card.contains(event.target)));
-      if (index < 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      const target = event.key === 'ArrowRight' ? index + 1 : event.key === 'ArrowLeft' ? index - 1
-        : event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : null;
-      if (target == null) { if (event.key === 'Tab') requestedIndex = null; return; }
-      event.preventDefault(); go(target, true);
-    };
-    const scrolled = () => {
-      schedule();
-      if (typeof setTimeout === 'function') waitForSettle();
-      else announce();
-    };
-    const interrupted = () => { requestedIndex = null; schedule(); };
-    previous.addEventListener('click', back); next.addEventListener('click', forward);
-    track.addEventListener('scroll', scrolled, { passive: true }); track.addEventListener('keydown', keydown);
-    track.addEventListener('wheel', interrupted, { passive: true }); track.addEventListener('pointerdown', interrupted, { passive: true });
-    const resize = window.ResizeObserver ? new window.ResizeObserver(() => { schedule(); announce(); }) : null;
-    if (resize) resize.observe(track);
-    announce(); schedule();
-    section.destroy = () => {
-      destroyed = true;
-      if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
-      if (settle && typeof clearTimeout === 'function') clearTimeout(settle);
-      previous.removeEventListener('click', back); next.removeEventListener('click', forward);
-      track.removeEventListener('scroll', scrolled); track.removeEventListener('keydown', keydown);
-      track.removeEventListener('wheel', interrupted); track.removeEventListener('pointerdown', interrupted);
-      if (resize) resize.disconnect();
-    };
+    section.destroy = () => { if (controller) controller.destroy(); if (captionAnimation) captionAnimation.cancel(); };
     return section;
   }
   const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;

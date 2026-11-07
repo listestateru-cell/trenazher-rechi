@@ -43,6 +43,123 @@ window.TrainerTrainingUI = (() => {
   function grid(items, label) {
     return h('div', { class: 'training-app-grid', role: 'group', 'aria-label': label }, items);
   }
+  function shelf({ id, title, items = [], label = title }) {
+    const entries = Array.isArray(items) ? items : [];
+    const trackId = `home-shelf-${id}-track`, titleId = `home-shelf-${id}-title`;
+    const counter = h('span', { class: 'home-shelf-counter', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
+    const previous = h('button', { type: 'button', class: 'home-shelf-arrow', 'aria-label': `Предыдущая карточка: ${title}`, 'aria-controls': trackId }, window.icon('back'));
+    const next = h('button', { type: 'button', class: 'home-shelf-arrow', 'aria-label': `Следующая карточка: ${title}`, 'aria-controls': trackId }, window.icon('arrow'));
+    const cards = entries.map((item, index) => h('a', {
+      class: `home-shelf-card training-tone-${item.tone || tones[item.icon] || 'blue'}`,
+      href: item.href,
+      'aria-label': [item.title, item.description, item.meta, item.badge == null ? '' : `Прошлая оценка ${item.badge} из 10`]
+        .filter(Boolean).map(part => String(part).trim().replace(/\.+$/, '')).join('. '),
+      style: `--shelf-tilt:${[-2, 2, -1.5, 2.5][index % 4]}deg`, 'data-active': index === 0 ? 'true' : 'false',
+    },
+    h('span', { class: 'home-shelf-cover', 'aria-hidden': 'true' },
+      h('span', { class: 'home-shelf-kicker' }, item.kicker || String(index + 1).padStart(2, '0')),
+      h('span', { class: 'home-shelf-icon' }, icon(item.icon || 'all'))),
+    h('span', { class: 'home-shelf-title' }, item.title),
+    item.description ? h('span', { class: 'home-shelf-description' }, item.description) : null,
+    h('span', { class: 'home-shelf-meta' }, h('span', null, item.meta || 'Открыть задание'),
+      item.badge == null ? window.icon('arrow') : h('span', { class: 'home-shelf-score' }, 'Оценка ', item.badge))));
+    const track = h('div', { id: trackId, class: 'home-shelf-track', role: 'group', 'aria-label': label }, cards);
+    const section = h('section', { class: 'training-home-section home-shelf', 'aria-labelledby': titleId, 'data-home-shelf': id },
+      h('div', { class: 'glass-home-section-heading home-shelf-heading' }, h('h2', { id: titleId }, title),
+        h('div', { class: 'home-shelf-controls', 'aria-label': `Перелистывание: ${title}` }, counter, previous, next)), track);
+    let destroyed = false, current = 0, requestedIndex = null, frame = 0, settle = 0;
+    const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    function announce() {
+      if (destroyed) return;
+      const value = entries.length ? `${current + 1} / ${entries.length}` : '0 / 0';
+      if (counter.textContent !== value) counter.textContent = value;
+    }
+    function activate(index) {
+      current = Math.max(0, Math.min(cards.length - 1, index));
+      cards.forEach((card, i) => card.setAttribute('data-active', String(i === current)));
+    }
+    function update() {
+      frame = 0;
+      if (destroyed) return;
+      const width = track.clientWidth || 0, left = track.scrollLeft || 0;
+      if (width && typeof track.getBoundingClientRect === 'function') {
+        const edge = track.getBoundingClientRect().left;
+        const atEnd = track.scrollWidth > width + 2 && left >= track.scrollWidth - width - 2;
+        const nearest = cards.reduce((best, card, i) => {
+          const distance = Math.abs(card.getBoundingClientRect().left - edge);
+          return distance < best.distance ? { index: i, distance } : best;
+        }, { index: 0, distance: Infinity });
+        activate(requestedIndex == null ? atEnd ? cards.length - 1 : nearest.index : requestedIndex);
+        previous.disabled = requestedIndex == null ? left <= 2 : requestedIndex === 0;
+        next.disabled = track.scrollWidth <= width + 2 || (requestedIndex == null ? atEnd : requestedIndex === cards.length - 1);
+      } else {
+        previous.disabled = current === 0;
+        next.disabled = cards.length < 2 || current >= cards.length - 1;
+      }
+    }
+    function schedule() {
+      if (destroyed) return;
+      if (typeof requestAnimationFrame === 'function') {
+        if (!frame) frame = requestAnimationFrame(update);
+      } else update();
+    }
+    function settled() {
+      settle = 0;
+      requestedIndex = null;
+      update(); announce();
+    }
+    function waitForSettle() {
+      if (typeof setTimeout !== 'function') return;
+      if (settle && typeof clearTimeout === 'function') clearTimeout(settle);
+      settle = setTimeout(settled, 160);
+    }
+    function go(index, focus = false) {
+      if (destroyed || !cards.length) return;
+      const target = Math.max(0, Math.min(cards.length - 1, index));
+      if (focus && typeof cards[target].focus === 'function') cards[target].focus({ preventScroll: true });
+      requestedIndex = target;
+      activate(target);
+      if (typeof cards[target].getBoundingClientRect === 'function' && typeof track.getBoundingClientRect === 'function') {
+        const position = Number.isFinite(cards[target].offsetLeft) && Number.isFinite(cards[0].offsetLeft)
+          ? cards[target].offsetLeft - cards[0].offsetLeft
+          : cards[target].getBoundingClientRect().left - cards[0].getBoundingClientRect().left;
+        if (typeof track.scrollTo === 'function') track.scrollTo({ left: Math.max(0, position), behavior: reduced() ? 'auto' : 'smooth' });
+        else track.scrollLeft = Math.max(0, position);
+      }
+      announce(); schedule(); waitForSettle();
+    }
+    const back = () => go(current - 1), forward = () => go(current + 1);
+    const keydown = event => {
+      const index = cards.findIndex(card => card === event.target || (typeof card.contains === 'function' && card.contains(event.target)));
+      if (index < 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.key === 'ArrowRight' ? index + 1 : event.key === 'ArrowLeft' ? index - 1
+        : event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : null;
+      if (target == null) { if (event.key === 'Tab') requestedIndex = null; return; }
+      event.preventDefault(); go(target, true);
+    };
+    const scrolled = () => {
+      schedule();
+      if (typeof setTimeout === 'function') waitForSettle();
+      else announce();
+    };
+    const interrupted = () => { requestedIndex = null; schedule(); };
+    previous.addEventListener('click', back); next.addEventListener('click', forward);
+    track.addEventListener('scroll', scrolled, { passive: true }); track.addEventListener('keydown', keydown);
+    track.addEventListener('wheel', interrupted, { passive: true }); track.addEventListener('pointerdown', interrupted, { passive: true });
+    const resize = window.ResizeObserver ? new window.ResizeObserver(() => { schedule(); announce(); }) : null;
+    if (resize) resize.observe(track);
+    announce(); schedule();
+    section.destroy = () => {
+      destroyed = true;
+      if (frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+      if (settle && typeof clearTimeout === 'function') clearTimeout(settle);
+      previous.removeEventListener('click', back); next.removeEventListener('click', forward);
+      track.removeEventListener('scroll', scrolled); track.removeEventListener('keydown', keydown);
+      track.removeEventListener('wheel', interrupted); track.removeEventListener('pointerdown', interrupted);
+      if (resize) resize.disconnect();
+    };
+    return section;
+  }
   const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   const scoredValue = value => Number.isFinite(value) && value >= 0 && value <= 10;
   function progressSessions(sessions) {
@@ -198,22 +315,43 @@ window.TrainerTrainingUI = (() => {
     for (const session of doneSessions(sessions).slice().sort((a, b) => Date.parse(b.created) - Date.parse(a.created))) {
       if (!isDemoSession(session) && !lastByEx[session.exercise]) lastByEx[session.exercise] = session;
     }
-    const trainingTiles = catalog().order.map(id => {
+    const trainingDescriptions = {
+      minute: 'Раскройте случайную тему без подготовки.', compress: 'Сохраните главное, сокращая свой ответ.',
+      sprint: 'От ассоциаций к истории со всеми словами.', explain: 'Объясните одну тему разным слушателям.',
+      duel: 'Посмотрите на вопрос с двух сторон.', coach: 'Ответьте на новый вопрос тренера.',
+      free: 'Запишите выступление или свободный рассказ.',
+    };
+    const trainingItems = catalog().order.map(id => {
       const exercise = catalog().exercises[id], last = lastByEx[id];
-      const description = `${exercise.hint} ${durLabel(exercise)}${last ? `. Прошлая оценка ${f1(last.summary.overall)} из 10` : ''}`;
-      return tile({ title: id === 'duel' ? 'Поединок' : exercise.title, href: `#/ex/${id}`, icon: id,
-        description: id === 'duel' ? `${exercise.title}. ${description}` : description,
-        badge: last && Number.isFinite(last.summary.overall) ? f1(last.summary.overall) : null });
+      return { title: id === 'duel' ? 'Поединок' : exercise.title, href: `#/ex/${id}`, icon: id,
+        description: trainingDescriptions[id] || exercise.hint, kicker: exercise.develops, meta: durLabel(exercise),
+        badge: last && Number.isFinite(last.summary.overall) ? f1(last.summary.overall) : null };
     });
     const conversationCard = window.TrainerConversations ? await TrainerConversations.homeCard() : null;
     if (!ctx.alive()) return null;
-    if (conversationCard) trainingTiles.push(tile({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
-      description: 'Разговор с собеседником: до пяти ответов, голосом или текстом.' }));
-    const lessonTiles = window.TrainerLessons ? TrainerLessons.kinds.map(kind => tile({
-      title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id, description: kind.description })) : [];
-    const learningTiles = LEARNING_KINDS.map(kind => tile({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title,
-      href: `#/learn/${kind.id}`, icon: kind.id, description: kind.description }));
-    learningTiles.push(tile({ title: 'Все задания', href: '#/learn', icon: 'all', description: 'Все задания на мысль, слова и пересказ.' }));
+    if (conversationCard) trainingItems.push({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
+      description: 'Потренируйте ответ в сложной ситуации.', kicker: 'Диалог', meta: 'Голосом или текстом' });
+    const learningDescriptions = {
+      thought: 'Найдите потерю смысла и соберите понятный рассказ.', retell: 'Прочитайте отрывок и перескажите своими словами.',
+      clarify: 'Замените расплывчатые слова точной мыслью.', synonyms: 'Выберите подходящие слова и оттенки смысла.',
+      lexicon: 'Попробуйте новое слово в своей речи.',
+    };
+    const lessonItems = window.TrainerLessons ? TrainerLessons.kinds.map(kind => ({
+      title: kind.id === 'thought' ? 'Собери мысль' : kind.title, href: `#/lessons/${kind.id}`, icon: kind.id,
+      description: learningDescriptions[kind.id] || kind.description, kicker: 'Мысль и слово', meta: 'Голосом или текстом' })) : [];
+    const learningItems = LEARNING_KINDS.map(kind => ({ title: kind.id === 'clarify' ? 'Уточни мысль' : kind.title,
+      href: `#/learn/${kind.id}`, icon: kind.id, description: learningDescriptions[kind.id] || kind.description,
+      kicker: 'Мысль и слово', meta: 'Голосом или текстом' }));
+    learningItems.push({ title: 'Все задания', href: '#/learn', icon: 'all', description: 'Полный набор заданий на мысль, слова и пересказ.', meta: 'Открыть каталог' });
+    let imaginationData = null;
+    if (window.TrainerImagination) {
+      try { imaginationData = await api('/api/imagination'); }
+      catch (_) { imaginationData = { kinds: [] }; }
+      if (!ctx.alive()) return null;
+    }
+    const trainingShelf = shelf({ id: 'training', title: 'Тренировки', items: trainingItems, label: 'Упражнения для речи' });
+    const learningShelf = shelf({ id: 'learning', title: 'Мысль и слово', items: [...lessonItems, ...learningItems], label: 'Задания на мысль и слово' });
+    const imaginationSection = window.TrainerImagination ? TrainerImagination.homeSection(imaginationData) : null;
     const trend = scoreTrend(sessions);
     const progressNote = !Number.isFinite(trend.value) ? 'Появится после полного разбора упражнения.'
       : trend.comparisonReady ? Math.abs(trend.delta) < .05 ? 'Оценка пока на том же уровне'
@@ -233,18 +371,15 @@ window.TrainerTrainingUI = (() => {
         state.name ? h('p', { class: 'glass-home-greeting' }, state.name, ', начнём с программы дня.') : null),
       today,
       window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
-      h('section', { class: 'training-home-section glass-home-training', 'aria-labelledby': 'home-training-title' },
-        h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-training-title' }, 'Тренировки'), h('span', { class: 'small soft' }, 'В своём темпе')),
-        grid(trainingTiles, 'Упражнения для речи')),
-      h('section', { class: 'training-home-section glass-home-learning', 'aria-labelledby': 'home-learning-title' },
-        h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-learning-title' }, 'Мысль и слово')),
-        grid([...lessonTiles, ...learningTiles], 'Задания на мысль и слово')),
-      window.TrainerImagination ? TrainerImagination.homeSection() : null,
+      trainingShelf, learningShelf, imaginationSection,
       h('div', { class: 'glass-home-lower' }, progressCard, window.TrainerAssessment ? TrainerAssessment.homeCard(state.assessment) : null),
       h('aside', { class: 'glass-home-install' },
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));
     render(ctx, root);
-    return null;
+    return { destroy() {
+      trainingShelf.destroy(); learningShelf.destroy();
+      if (imaginationSection && typeof imaginationSection.destroy === 'function') imaginationSection.destroy();
+    } };
   }
-  return { icon, tile, grid, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge, homeView };
+  return { icon, tile, grid, shelf, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge, homeView };
 })();

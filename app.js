@@ -597,7 +597,7 @@ async function route() {
     else if (key === 'groups' && window.TrainerGroups) view = await TrainerGroups.view(ctx, parts, params);
     else if (key === 'conversation' && window.TrainerConversations) view = await TrainerConversations.view(ctx, parts, params);
     else if (key === 'lessons' && window.TrainerLessons) view = await TrainerLessons.catalog(ctx, parts[1] || 'thought');
-    else if (key === 'imagination' && window.TrainerImagination) view = await TrainerImagination.catalog(ctx);
+    else if (key === 'imagination' && window.TrainerImagination) view = await TrainerImagination.catalog(ctx, params);
     else if (key === 'ex') view = await ExerciseView(ctx, { exId: parts[1], params });
     else if (key === 's') view = await ExerciseView(ctx, { sid: parts[1], params });
     else if (key === 'learn') view = await LearningCatalogView(ctx, parts[1]);

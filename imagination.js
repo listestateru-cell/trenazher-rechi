@@ -6,7 +6,20 @@ window.TrainerImagination = (() => {
   const latestReview = p => [...(p.attempts || [])].reverse().find(a => a.status === 'done' && a.review);
   const mediaOf = p => (p.imagination || {}).media || null;
 
-  function homeSection() {
+  function homeSection(data) {
+    if (Array.isArray(data && data.kinds) && typeof TrainerTrainingUI.shelf === 'function') {
+      return TrainerTrainingUI.shelf({
+        id: 'imagination', title, label: 'Форматы воображения',
+        items: data.kinds.length ? data.kinds.map(kind => ({
+          title: kind.title, href: '#/imagination?kind=' + encodeURIComponent(kind.id),
+          icon: 'imagination', tone: 'indigo', description: kind.description,
+          meta: 'Голосом или текстом',
+        })) : [{
+          title: 'Все форматы', href: '#/imagination', icon: 'imagination', tone: 'indigo',
+          description: 'Откройте мастерскую и выберите задание.', meta: 'Голосом или текстом',
+        }],
+      });
+    }
     return h('section', { class: 'training-home-section imagination-home', 'aria-labelledby': 'home-imagination-title' },
       h('div', { class: 'glass-home-section-heading' }, h('h2', { id: 'home-imagination-title' }, title)),
       h('a', { class: 'card imagination-home-card', href: '#/imagination' },
@@ -18,8 +31,11 @@ window.TrainerImagination = (() => {
           h('span', { class: 'imagination-home-link' }, 'Открыть мастерскую', icon('arrow')))));
   }
 
-  async function catalog(ctx) {
+  async function catalog(ctx, params) {
     let data = await api('/api/imagination'), busy = false, destroyed = false;
+    if (!ctx.alive()) return null;
+    const requestedKind = params && typeof params.get === 'function' ? params.get('kind') : null;
+    const selectedKind = (data.kinds || []).find(kind => kind.id === requestedKind);
     const owner = window.TrainerDrafts && TrainerDrafts.profile();
     const alive = () => !destroyed && ctx.alive() && (!owner || owner === TrainerDrafts.profile());
     const error = h('p', { class: 'thought-error', role: 'alert', hidden: true });
@@ -65,21 +81,24 @@ window.TrainerImagination = (() => {
       const selected = (data.preferences || {}).interests || [];
       choices.replaceChildren(...(data.interests || []).map(interest => h('label', { class: 'imagination-interest' },
         h('input', { type: 'checkbox', value: interest.id, checked: selected.includes(interest.id) }), interest.title)));
-      cards.replaceChildren(...(data.kinds || []).map((kind, i) => h('article', { class: 'card imagination-kind' },
-        h('span', { class: 'imagination-number', 'aria-hidden': 'true' }, String(i + 1).padStart(2, '0')),
-        h('h2', null, kind.title), h('p', { class: 'soft' }, kind.description),
+      const visibleKinds = selectedKind ? (data.kinds || []).filter(kind => kind.id === selectedKind.id) : (data.kinds || []);
+      cards.replaceChildren(...visibleKinds.map((kind, i) => h('article', { class: 'card imagination-kind', 'aria-label': kind.title },
+        selectedKind ? null : h('span', { class: 'imagination-number', 'aria-hidden': 'true' }, String(i + 1).padStart(2, '0')),
+        selectedKind ? null : h('h2', null, kind.title), h('p', { class: 'soft' }, kind.description),
         (kind.items || [])[0] ? h('p', { class: 'imagination-example' }, 'Например: ', (kind.items || [])[0].task) : null,
         h('button', { type: 'button', class: 'btn ghost', 'aria-label': `Попробовать: ${kind.title}`, onclick: () => start(kind.id) }, 'Попробовать', icon('arrow')))));
       recent.replaceChildren(...((data.recent || []).length ? [h('h2', null, 'Продолжить своё занятие'),
         h('div', { class: 'imagination-recent-links' }, (data.recent || []).slice(0, 4).map(session => h('a', {
           class: 'btn ghost', href: `#/s/${session.session_id || session.id}` }, session.topic || session.title || 'Открыть занятие', icon('arrow'))))] : []));
     }
-    root.append(h('a', { class: 'back', href: '#/' }, icon('back'), 'К тренировкам'),
-      h('header', { class: 'imagination-heading' }, h('span', { class: 'chip' }, 'Пробный раздел · все 13 форматов'),
-        h('h1', null, title), h('p', { class: 'imagination-subtitle' }, 'Фантазия и образное мышление'),
-        h('p', { class: 'soft' }, 'Придумайте своё, расскажите голосом и выберите, куда повернуть мысль после вопросов тренера. Затем попробуйте ещё раз.')),
-      details, error, recent, cards,
-      h('p', { class: 'small soft' }, 'Тренер разбирает конкретный ответ. Здесь нет рейтинга креативности или единственно правильной истории.'));
+    root.append(...[h('a', { class: 'back', href: selectedKind ? '#/imagination' : '#/' }, icon('back'), selectedKind ? 'Все форматы' : 'К тренировкам'),
+      h('header', { class: 'imagination-heading' }, h('span', { class: 'chip' }, selectedKind ? title : 'Пробный раздел · все 13 форматов'),
+        h('h1', null, selectedKind ? selectedKind.title : title),
+        selectedKind ? null : h('p', { class: 'imagination-subtitle' }, 'Фантазия и образное мышление'),
+        selectedKind ? null : h('p', { class: 'soft' }, 'Придумайте своё, расскажите голосом и выберите, куда повернуть мысль после вопросов тренера. Затем попробуйте ещё раз.')),
+      requestedKind && !selectedKind ? h('p', { class: 'small soft', role: 'status' }, 'Этот формат не найден. Выберите другой.') : null,
+      selectedKind ? null : details, error, selectedKind ? null : recent, cards,
+      h('p', { class: 'small soft' }, 'Тренер разбирает конкретный ответ. Здесь нет рейтинга креативности или единственно правильной истории.')].filter(Boolean));
     draw(); render(ctx, root);
     return { destroy() { destroyed = true; } };
   }

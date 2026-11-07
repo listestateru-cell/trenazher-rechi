@@ -86,6 +86,140 @@
 .glass-home-install .btn { min-height: 44px; height: auto; padding: 12px 15px; font-size: 14px; color: var(--home-soft-ink); text-align: center; }
 .glass-home a:focus-visible, .glass-home button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 
+/* Три независимые полки. Нативный скролл сохраняет вертикальную прокрутку страницы. */
+.glass-home .home-shelf { min-width: 0; margin: 0; }
+.glass-home .home-shelf-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.glass-home .home-shelf-heading h2 { margin: 0; font-size: 21px; line-height: 1.25; letter-spacing: -.025em; }
+.glass-home .home-shelf-controls { display: flex; align-items: center; flex: none; gap: 8px; }
+.glass-home .home-shelf-counter { min-width: 42px; color: var(--ink-2); font-size: 12px; line-height: 1.35; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.glass-home .home-shelf-arrow {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 50%;
+  background: var(--glass-quiet);
+  color: var(--accent-ink);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 160ms ease-out, opacity 160ms ease-out;
+}
+.glass-home .home-shelf-arrow svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.glass-home .home-shelf-arrow:hover { background: var(--glass-active); }
+.glass-home .home-shelf-arrow:disabled { opacity: .34; cursor: default; }
+.glass-home .home-shelf-track {
+  --shelf-card-width: 236px;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 18px 8px 26px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 8px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.glass-home .home-shelf-track::-webkit-scrollbar { height: 4px; }
+.glass-home .home-shelf-track::-webkit-scrollbar-thumb { border-radius: 4px; background: var(--line-2); }
+.glass-home .home-shelf-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--shelf-card-width);
+  width: var(--shelf-card-width);
+  min-width: 0;
+  min-height: 292px;
+  gap: 9px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--glass-rim);
+  border-radius: 23px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow), 0 0 0 1px var(--glass-outline);
+  text-decoration: none;
+  scroll-snap-align: start;
+  scroll-margin-inline: 8px;
+  transform-origin: 50% 84%;
+  transform: rotate(var(--shelf-tilt, 2deg));
+  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.glass-home .home-shelf-card[data-active="true"], .glass-home .home-shelf-card:focus-visible { transform: rotate(0deg) translateY(-3px); }
+.glass-home .home-shelf-card:hover { color: var(--ink); text-decoration: none; }
+.glass-home .home-shelf-card:active { transform: rotate(0deg) scale(.985); }
+.glass-home .home-shelf-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 0;
+  height: 112px;
+  padding: 26px 10px 9px;
+  overflow: hidden;
+  border-radius: 15px;
+  background: linear-gradient(140deg, var(--tile-start, var(--training-icon-blue)), var(--tile-end, var(--training-icon-blue-end)));
+  color: var(--training-icon-ink);
+  box-shadow: inset 0 1px 0 #ffffff40, inset 0 -1px 1px #00000016;
+  isolation: isolate;
+}
+.glass-home .home-shelf-cover::before, .glass-home .home-shelf-cover::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  border: 1px solid #ffffff1f;
+  pointer-events: none;
+}
+.glass-home .home-shelf-cover::before { top: -82px; right: -52px; background: #ffffff0a; box-shadow: 0 0 0 23px #ffffff08; }
+.glass-home .home-shelf-cover::after { bottom: -124px; left: -14px; box-shadow: 0 0 0 16px #ffffff06; }
+.glass-home .home-shelf-icon { position: relative; display: grid; place-items: center; width: 76px; height: 76px; color: inherit; }
+.glass-home .home-shelf-cover .training-icon { width: 72px; height: 72px; stroke-width: 2.1; color: inherit; filter: drop-shadow(0 2px 2px #00000012); }
+.glass-home .home-shelf-kicker { position: absolute; top: 10px; left: 12px; z-index: 1; max-width: calc(100% - 24px); color: inherit; font-size: 11px; line-height: 1.35; font-weight: 600; letter-spacing: .04em; overflow-wrap: anywhere; }
+.glass-home .home-shelf-title { margin: 1px 2px 0; color: var(--ink); font-size: 21px; line-height: 1.18; font-weight: 650; letter-spacing: -.025em; overflow-wrap: anywhere; text-wrap: balance; }
+.glass-home .home-shelf-description { margin: 0 2px; color: var(--ink-2); font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.glass-home .home-shelf-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: auto 2px 0; padding-top: 5px; min-height: 24px; color: var(--ink-2); font-size: 12px; line-height: 1.35; }
+.glass-home .home-shelf-meta > svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.glass-home .home-shelf-score { flex: none; display: inline-flex; align-items: baseline; gap: 3px; color: var(--accent-ink); font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .glass-home .home-shelf-track { --shelf-card-width: min(236px, 72vw); gap: 16px; }
+  .glass-home .home-shelf-heading { gap: 10px; }
+  .glass-home .home-shelf-card { min-height: 286px; border-radius: 22px; }
+}
+@media (max-width: 350px) {
+  .glass-home .home-shelf-heading { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .glass-home .home-shelf-heading h2 { font-size: 20px; }
+  .glass-home .home-shelf-controls { gap: 8px; }
+  .glass-home .home-shelf-counter { min-width: 32px; font-size: 12px; }
+  .glass-home .home-shelf-card { padding: 11px; }
+}
+@media (hover: hover) {
+  .glass-home .home-shelf-card:hover { transform: rotate(0deg) translateY(-3px); box-shadow: var(--glass-shadow-raised), 0 0 0 1px var(--glass-outline); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-home .home-shelf-card, .glass-home .home-shelf-arrow { transition: none; }
+  .glass-home .home-shelf-card, .glass-home .home-shelf-card[data-active="true"], .glass-home .home-shelf-card:focus-visible, .glass-home .home-shelf-card:hover, .glass-home .home-shelf-card:active { transform: none; }
+}
+
 @media (max-width: 920px) {
   .glass-home .training-app-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

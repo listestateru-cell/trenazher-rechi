@@ -1,0 +1,24 @@
+/* Локальная графитовая поверхность; основные цвета приложения не меняются. */
+.level.voice-light {
+  --voice-light-bg: #20201f;
+  --voice-light-ink: #f1f1ed;
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: 120px;
+  margin-inline: auto;
+  border-radius: 18px;
+  background: var(--voice-light-bg);
+  color: var(--voice-light-ink);
+}
+.level.voice-light[hidden] { display: none !important; }
+:root[data-theme="dark"] .level.voice-light {
+  --voice-light-bg: #151514;
+  --voice-light-ink: #e8e8e3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .level.voice-light {
+    --voice-light-bg: #151514;
+    --voice-light-ink: #e8e8e3;
+  }
+}

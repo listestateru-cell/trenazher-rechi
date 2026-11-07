@@ -515,6 +515,7 @@ class Recorder {
 
 /* Бегущая полоска громкости: видно, что тренер вас «слышит». */
 function levelMeter(canvas) {
+  if (window.TrainerVoiceLight) return TrainerVoiceLight.create(canvas, { level: () => mic.level() });
   const g = canvas.getContext('2d');
   const bars = new Array(56).fill(0);
   let raf = 0, running = false, last = 0, color = '#888';
@@ -1188,7 +1189,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const stageTitle = h('div', { class: 'stage-title' });
   const stageSub = h('div', { class: 'stage-sub' });
   const stageActions = h('div', { class: 'stage-actions' });
-  const canvas = h('canvas', { class: 'level', 'aria-hidden': 'true', style: 'color:var(--ink-3)' });
+  const canvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true' });
   const stage = h('section', { class: 'card stage', 'aria-live': 'polite' },
     h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, canvas, stageActions);
   const recordingDetails = h('details', { class: 'recording-details', open: true },
@@ -1210,7 +1211,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     stageActions.replaceChildren();
     stageTitle.textContent = '';
     stageSub.textContent = '';
-    canvas.hidden = !['rec', 'prep', 'asking'].includes(v.stage);
+    canvas.hidden = v.stage !== 'rec';
     const p = plan();
     const idx = nextIndex();
     const label = idx != null && p[idx] ? (p.length > 1 ? `Попытка ${idx + 1} из ${p.length} · ${p[idx].label}` : p[idx].label) : '';
@@ -2071,6 +2072,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
     if (nextResize) nextResize.disconnect();
+    if (meter.destroy) meter.destroy(); else meter.stop();
     thoughts.destroy();
     if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
     document.removeEventListener('keydown', onKey);
@@ -2102,7 +2104,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       cancelAnimationFrame(v.raf);
       if (v.rec) v.rec.cancel({ preserve: true });
       thoughts.destroy();
-      meter.stop();
+      if (meter.destroy) meter.destroy(); else meter.stop();
       mic.close();
       if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
       v.cards.forEach((c) => c.destroy());

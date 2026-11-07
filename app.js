@@ -1027,7 +1027,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
     forceIndex: null, pollT: 0, raf: 0, cards: new Map(), destroyed: false, editing: false,
     anKey: '', afterKey: '', waitPolls: 0, sessionsCache: null, scrolledToResult: false, prepShown: null,
-    thoughtMicBusy: false, pendingTake: null, reviewing: null,
+    thoughtMicBusy: false, startRequested: false, pendingTake: null, reviewing: null,
   };
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
@@ -1085,7 +1085,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const nextIndex = () => (v.forceIndex != null ? v.forceIndex : firstMissing());
   const allUploaded = () => !!v.session && v.session.takes.length >= plan().length &&
     plan().every((_, i) => takeAt(i) && !['missing', 'error'].includes(takeAt(i).status));
-  const busy = () => v.thoughtMicBusy || ['prep', 'rec', 'upload', 'asking', 'starting'].includes(v.stage);
+  const busy = () => v.startRequested || v.thoughtMicBusy || ['prep', 'rec', 'upload', 'asking', 'starting'].includes(v.stage);
 
   /* ---- шапка и тема ---- */
   const backHref = v.groupId ? `#/groups/${v.groupId}` : (v.programDay ? '#/program' : (sid ? '#/history' : '#/'));
@@ -1191,8 +1191,10 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const stageActions = h('div', { class: 'stage-actions' });
   const canvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true' });
   const vinyl = window.TrainerSoloveyVinyl ? TrainerSoloveyVinyl.create() : null;
+  const vinylButton = vinyl ? h('button', { class: 'vinyl-trigger', type: 'button', hidden: true, 'aria-label': 'Запись', onclick: startTake },
+    vinyl.el, h('span', { class: 'vinyl-trigger-label', 'aria-hidden': 'true' }, 'Запись')) : null;
   const stage = h('section', { class: 'card stage' + (vinyl ? ' has-solovey-vinyl' : ''), 'aria-live': 'polite' },
-    vinyl ? vinyl.el : null, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
+    vinylButton, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
   const recordingDetails = h('details', { class: 'recording-details', open: true },
     h('summary', null, 'Запись упражнения'), stage);
   const workspace = h('div', { class: 'workspace' }, topicCard, recordingDetails);
@@ -1217,6 +1219,14 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const p = plan();
     const idx = nextIndex();
     const label = idx != null && p[idx] ? (p.length > 1 ? `Попытка ${idx + 1} из ${p.length} · ${p[idx].label}` : p[idx].label) : '';
+    const vinylReady = !!vinylButton && ['idle', 'between', 'error'].includes(v.stage)
+      && idx != null && !v.pendingTake && !isDemoSession(v.session);
+    if (vinylButton) {
+      vinylButton.hidden = !(vinylReady || v.stage === 'rec');
+      vinylButton.disabled = !vinylReady || v.thoughtMicBusy || v.startRequested;
+      vinylButton.setAttribute('aria-label', v.stage === 'rec' ? 'Идёт запись' : 'Запись');
+    }
+    stage.dataset.vinylVisible = String(!!vinylButton && !vinylButton.hidden);
 
     if (v.stage === 'prep') {
       center.append(h('div', null, h('div', { class: 'big-count' }, String(v.prepShown || '')), h('div', { class: 'stage-sub' }, 'готовьтесь')));
@@ -1286,9 +1296,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       return;
     }
     const startLabel = v.stage === 'between' ? 'Дальше' : (isFree ? 'Запись' : 'Начать');
-    const btn = h('button', { class: 'rec-btn', type: 'button', disabled: v.thoughtMicBusy, onclick: startTake }, icon('mic'), startLabel);
-    center.append(btn);
-    stageTitle.textContent = label || 'Запись';
+    if (!vinylButton) {
+      const btn = h('button', { class: 'rec-btn', type: 'button', disabled: v.thoughtMicBusy || v.startRequested, onclick: startTake }, icon('mic'), startLabel);
+      center.append(btn);
+    }
+    stageTitle.textContent = isFree ? 'Запись' : (label || 'Запись');
     stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), v.ex.prep ? ` — старт, ${v.ex.prep} с на подготовку` : ' — старт');
     if (v.stage === 'between' && v.session) {
       const prev = v.session.takes.filter((t) => t.status !== 'missing').length - 1;
@@ -1324,32 +1336,41 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   async function startTake() {
     if (isDemoSession(v.session)) return;
     if (v.pendingTake) { renderStage(); return; }
-    if (busy() || v.destroyed) return;
+    if (busy() || v.startRequested || v.destroyed) return;
     const idx = nextIndex();
     if (idx == null) return;
+    v.startRequested = true;
+    if (vinylButton) vinylButton.disabled = true;
     try {
-      await mic.open();
-    } catch (e) {
-      v.stage = 'error';
-      v.stageError = e.message;
-      renderStage();
-      return;
+      try {
+        await mic.open();
+      } catch (e) {
+        if (v.destroyed) return;
+        v.stage = 'error';
+        v.stageError = e.message;
+        renderStage();
+        return;
+      }
+      if (v.destroyed) { mic.close(); return; }
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (!(await ensureSession()) || v.destroyed) return;
+      v.recIndex = idx;
+      renderStepper();
+      if (v.exId === 'coach' && prefs.get('readQuestion', true)) {
+        v.stage = 'asking';
+        renderStage();
+        meter.start();
+        const spoke = speak(v.topic, () => { if (v.stage === 'asking') beginRecording(); });
+        if (!spoke) beginRecording();
+        return;
+      }
+      const prep = v.ex.prep || 0;
+      if (prep > 0) runPrep(prep);
+      else beginRecording();
+    } finally {
+      v.startRequested = false;
+      if (vinylButton) vinylButton.disabled = v.destroyed || busy();
     }
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    if (!(await ensureSession())) return;
-    v.recIndex = idx;
-    renderStepper();
-    if (v.exId === 'coach' && prefs.get('readQuestion', true)) {
-      v.stage = 'asking';
-      renderStage();
-      meter.start();
-      const spoke = speak(v.topic, () => { if (v.stage === 'asking') beginRecording(); });
-      if (!spoke) beginRecording();
-      return;
-    }
-    const prep = v.ex.prep || 0;
-    if (prep > 0) runPrep(prep);
-    else beginRecording();
   }
 
   function runPrep(sec) {

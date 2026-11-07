@@ -1,14 +1,14 @@
 /* Значки тренировок используют одну геометрию и палитру в обеих темах. */
 :root {
-  --training-icon-blue: #317cdb; --training-icon-blue-end: #1552ae;
-  --training-icon-teal: #168f8b; --training-icon-teal-end: #086663;
-  --training-icon-amber: #bb730f; --training-icon-amber-end: #8d4f0a;
-  --training-icon-green: #3b914a; --training-icon-green-end: #226c31;
-  --training-icon-violet: #8055d5; --training-icon-violet-end: #53319d;
-  --training-icon-coral: #c15e3d; --training-icon-coral-end: #9e3f27;
-  --training-icon-rose: #bd4f83; --training-icon-rose-end: #8e2e5d;
-  --training-icon-indigo: #6167ce; --training-icon-indigo-end: #3d439f;
-  --training-icon-slate: #67778e; --training-icon-slate-end: #44546d;
+  --training-icon-blue: #287060; --training-icon-blue-end: #205a4d;
+  --training-icon-teal: #3b7e6c; --training-icon-teal-end: #2a6356;
+  --training-icon-amber: #71734c; --training-icon-amber-end: #535735;
+  --training-icon-green: #47734d; --training-icon-green-end: #345b3a;
+  --training-icon-violet: #5b7861; --training-icon-violet-end: #3f5c45;
+  --training-icon-coral: #6d7452; --training-icon-coral-end: #4d5739;
+  --training-icon-rose: #647765; --training-icon-rose-end: #455b48;
+  --training-icon-indigo: #396a5c; --training-icon-indigo-end: #285246;
+  --training-icon-slate: #5c6c62; --training-icon-slate-end: #3e5145;
   --training-icon-ink: #fff;
 }
 .training-home-hero { align-items: start; gap: 24px; }

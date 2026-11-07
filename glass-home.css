@@ -1,11 +1,11 @@
 /* Главная рабочего приложения. Стекло — вокруг действий, плотный фон — под текстом. */
 .glass-home {
-  --home-blue: #2459d6;
-  --home-blue-deep: #1947b7;
-  --home-soft-ink: #536780;
+  --home-accent: var(--glass-primary, #287060);
+  --home-accent-deep: var(--glass-primary-hover, #205b4e);
+  --home-soft-ink: var(--ink-2);
   --home-glass: rgba(255, 255, 255, .68);
   --home-glass-line: rgba(255, 255, 255, .95);
-  --home-shadow: 0 16px 44px -28px rgba(46, 80, 150, .5), inset 0 1px 0 rgba(255, 255, 255, .96);
+  --home-shadow: 0 16px 44px -28px rgba(48, 77, 58, .28), inset 0 1px 0 rgba(255, 255, 255, .96);
   display: grid;
   gap: 30px;
   max-width: 1040px;
@@ -17,7 +17,7 @@
 .glass-home-date { font-size: 13px; font-weight: 550; text-transform: capitalize; color: var(--home-soft-ink); }
 .glass-home-heading h1 { margin: 0; font-size: clamp(27px, 3.5vw, 36px); line-height: 1.18; letter-spacing: -.035em; }
 .glass-home-greeting { color: var(--home-soft-ink); font-size: 15px; overflow-wrap: anywhere; }
-.glass-home-scope { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; max-width: 60%; padding: 8px 14px; border: 1px solid var(--home-glass-line); border-radius: 16px; background: var(--home-glass); color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.35; box-shadow: 0 3px 12px -10px #204e9b80; overflow-wrap: anywhere; text-align: right; }
+.glass-home-scope { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; max-width: 60%; padding: 8px 14px; border: 1px solid var(--home-glass-line); border-radius: 16px; background: var(--home-glass); color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.35; box-shadow: 0 3px 12px -10px #315b4380; overflow-wrap: anywhere; text-align: right; }
 .glass-home-scope svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .glass-home-scope:hover { text-decoration: none; background: var(--surface); }
 .glass-home .glass-home-today {
@@ -26,7 +26,7 @@
   padding: 28px;
   border: 1px solid var(--home-glass-line);
   border-radius: 30px;
-  background: linear-gradient(125deg, rgba(255, 255, 255, .88), rgba(224, 234, 255, .72) 70%, rgba(224, 220, 255, .65));
+  background: linear-gradient(125deg, rgba(255, 255, 255, .88), rgba(234, 236, 229, .78) 70%, rgba(230, 235, 228, .72));
   box-shadow: var(--home-shadow);
   backdrop-filter: blur(20px) saturate(1.35);
   -webkit-backdrop-filter: blur(20px) saturate(1.35);
@@ -34,22 +34,22 @@
 }
 .glass-home-today-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .glass-home-eyebrow { font-size: 14px; line-height: 1.4; font-weight: 600; color: var(--home-soft-ink); }
-.glass-home-today-top .chip { flex: none; padding: 5px 9px; border: 1px solid rgba(71, 103, 166, .1); background: rgba(255, 255, 255, .75); color: var(--home-soft-ink); font-size: 12px; }
+.glass-home-today-top .chip { flex: none; padding: 5px 9px; border: 1px solid rgba(40, 85, 62, .12); background: rgba(255, 255, 255, .75); color: var(--home-soft-ink); font-size: 12px; }
 .glass-home-next { display: flex; gap: 18px; align-items: center; min-width: 0; }
 .glass-home-next > div { min-width: 0; }
 .glass-home-next-label { color: var(--home-soft-ink); font-size: 13px; line-height: 1.4; margin-bottom: 5px; }
 .glass-home .glass-home-next h2 { font-size: clamp(24px, 3.2vw, 30px); line-height: 1.2; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.glass-home-next-icon { display: grid; place-items: center; flex: none; width: 70px; height: 70px; border-radius: 21px; color: #fff; background: linear-gradient(145deg, #6a99f0, #2862d7); box-shadow: inset 0 1px 0 #ffffff91, 0 8px 17px -10px #2052b8a1; }
+.glass-home-next-icon { display: grid; place-items: center; flex: none; width: 70px; height: 70px; border-radius: 21px; color: #fff; background: linear-gradient(145deg, #3b816d, #287060); box-shadow: inset 0 1px 0 #ffffff91, 0 8px 17px -10px #285b43a1; }
 .glass-home-next-icon .training-icon { width: 44px; height: 44px; stroke-width: 2.5; }
 .glass-home-day-caption { color: var(--home-soft-ink); font-size: 15px; line-height: 1.5; }
 .glass-home .today-card .glass-home-steps { gap: 7px; }
-.glass-home .today-card .glass-home-steps span { height: 7px; border-radius: 9px; background: rgba(62, 96, 161, .13); }
-.glass-home .today-card .glass-home-steps span.done { background: linear-gradient(90deg, #437de8, #2459d6); }
-.glass-home .glass-home-primary { display: flex; width: 100%; justify-content: center; gap: 12px; min-height: 52px; height: auto; padding: 13px 18px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 17px; background: linear-gradient(135deg, var(--home-blue), var(--home-blue-deep)); color: #fff; font-size: 16px; font-weight: 650; box-shadow: inset 0 1px 0 #ffffff40, 0 8px 18px -12px #164cbfba; }
-.glass-home .glass-home-primary:hover { opacity: 1; filter: brightness(1.06); }
+.glass-home .today-card .glass-home-steps span { height: 7px; border-radius: 9px; background: rgba(40, 93, 66, .14); }
+.glass-home .today-card .glass-home-steps span.done { background: linear-gradient(90deg, #3b816d, #287060); }
+.glass-home .glass-home-primary { display: flex; width: 100%; justify-content: center; gap: 12px; min-height: 52px; height: auto; padding: 13px 18px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 17px; background: linear-gradient(135deg, var(--home-accent), var(--home-accent-deep)); color: var(--glass-primary-ink, #fff); font-size: 16px; font-weight: 650; box-shadow: inset 0 1px 0 #ffffff40, 0 8px 18px -12px #244d3aba; }
+.glass-home .glass-home-primary:hover { opacity: 1; background: var(--glass-primary-hover, #205b4e); }
 .glass-home-today-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
 .glass-home-course-meta { color: var(--home-soft-ink); font-size: 13px; line-height: 1.5; }
-.glass-home-program-link, .glass-home-text-link { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; color: var(--home-blue-deep); font-size: 14px; font-weight: 600; }
+.glass-home-program-link, .glass-home-text-link { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; color: var(--accent-ink); font-size: 14px; font-weight: 600; }
 .glass-home-program-link svg, .glass-home-text-link svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .glass-home .training-home-section { margin: 0; min-width: 0; }
 .glass-home-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; margin-bottom: 14px; }
@@ -57,17 +57,17 @@
 .glass-home-section-heading > .soft { text-align: right; font-size: 13px; }
 .glass-home .training-app-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 20px 14px; }
 .glass-home .training-tile { padding: 5px 0; min-height: 116px; border-radius: 20px; gap: 10px; }
-.glass-home .training-tile-art { width: 76px; height: 76px; border-radius: 24px; color: var(--home-blue-deep); background: linear-gradient(145deg, rgba(255, 255, 255, .97), rgba(223, 233, 255, .77)); border: 1px solid rgba(255, 255, 255, .95); box-shadow: inset 0 1px 0 #fff, inset 0 -2px 5px #bfceeb4a, 0 9px 18px -12px #355ba983; }
-.glass-home .training-tone-teal .training-tile-art { color: #146e79; background: linear-gradient(145deg, #ffffffed, #dcf0f3c9); }
-.glass-home .training-tone-amber .training-tile-art { color: #8c6023; background: linear-gradient(145deg, #ffffffed, #f9ebd5c9); }
-.glass-home .training-tone-green .training-tile-art { color: #267456; background: linear-gradient(145deg, #ffffffed, #ddefe5c9); }
-.glass-home .training-tone-violet .training-tile-art { color: #6650a3; background: linear-gradient(145deg, #ffffffed, #e9e2f9c9); }
-.glass-home .training-tone-coral .training-tile-art { color: #a04f42; background: linear-gradient(145deg, #ffffffed, #f8e4e0c9); }
-.glass-home .training-tone-rose .training-tile-art { color: #9c4f77; background: linear-gradient(145deg, #ffffffed, #f6e1efc9); }
-.glass-home .training-tone-indigo .training-tile-art { color: #515db0; background: linear-gradient(145deg, #ffffffed, #e2e7fdc9); }
+.glass-home .training-tile-art { width: 76px; height: 76px; border-radius: 24px; color: #205a4d; background: linear-gradient(145deg, rgba(255, 255, 255, .97), rgba(230, 235, 228, .85)); border: 1px solid rgba(255, 255, 255, .95); box-shadow: inset 0 1px 0 #fff, inset 0 -2px 5px #c2d1c34a, 0 9px 18px -12px #355a4383; }
+.glass-home .training-tone-teal .training-tile-art { color: #286d5c; background: linear-gradient(145deg, #ffffffed, #e0ece5d9); }
+.glass-home .training-tone-amber .training-tile-art { color: #5c643a; background: linear-gradient(145deg, #ffffffed, #ecebddde); }
+.glass-home .training-tone-green .training-tile-art { color: #356c48; background: linear-gradient(145deg, #ffffffed, #e0ebdfd9); }
+.glass-home .training-tone-violet .training-tile-art { color: #536d53; background: linear-gradient(145deg, #ffffffed, #e5ebe0d9); }
+.glass-home .training-tone-coral .training-tile-art { color: #646b47; background: linear-gradient(145deg, #ffffffed, #eaeadee0); }
+.glass-home .training-tone-rose .training-tile-art { color: #4c6c59; background: linear-gradient(145deg, #ffffffed, #e4ebe3d9); }
+.glass-home .training-tone-indigo .training-tile-art { color: #315f51; background: linear-gradient(145deg, #ffffffed, #e1eae4d9); }
 .glass-home .training-tile .training-icon { width: 48px; height: 48px; stroke-width: 2.6; }
 .glass-home .training-tile-label { max-width: 150px; font-size: 14px; font-weight: 550; line-height: 1.35; }
-.glass-home .training-tile-badge { top: -4px; right: -5px; border-color: #cddaf0; background: #fff; color: #344f77; min-width: 28px; padding: 3px 5px; }
+.glass-home .training-tile-badge { top: -4px; right: -5px; border-color: #d9dfd7; background: #fff; color: #365443; min-width: 28px; padding: 3px 5px; }
 .glass-home .training-tile:hover .training-tile-art { filter: brightness(1.02); }
 .glass-home-lower { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; }
 .glass-home-lower > .card { margin: 0; padding: 24px; min-width: 0; border-radius: 25px; }
@@ -84,7 +84,7 @@
 .glass-home-lower .assessment-entry .btn { min-height: 44px; font-size: 14px; }
 .glass-home-install { display: flex; justify-content: center; padding-top: 4px; }
 .glass-home-install .btn { min-height: 44px; height: auto; padding: 12px 15px; font-size: 14px; color: var(--home-soft-ink); text-align: center; }
-.glass-home a:focus-visible, .glass-home button:focus-visible { outline: 3px solid #2459d6; outline-offset: 4px; }
+.glass-home a:focus-visible, .glass-home button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 
 @media (max-width: 920px) {
   .glass-home .training-app-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -135,36 +135,34 @@
   .glass-home-lower .assessment-entry { flex-direction: column; }
 }
 :root[data-theme="dark"] .glass-home {
-  --home-soft-ink: #bac9df;
-  --home-glass: rgba(30, 48, 76, .8);
-  --home-glass-line: rgba(153, 185, 239, .22);
-  --home-blue-deep: #bfd4ff;
-  --home-shadow: inset 0 1px 0 #c6dbff20, 0 20px 40px -30px #000b;
+  --home-soft-ink: var(--ink-2);
+  --home-glass: rgba(33, 50, 39, .88);
+  --home-glass-line: rgba(171, 201, 176, .22);
+  --home-accent-deep: var(--glass-primary-hover, #205b4e);
+  --home-shadow: inset 0 1px 0 #d2e6d120, 0 20px 40px -30px #000b;
 }
-:root[data-theme="dark"] .glass-home .glass-home-today { background: linear-gradient(125deg, #263a55db, #1b3054d6 75%, #323756cc); }
-:root[data-theme="dark"] .glass-home-today-top .chip { background: #0f203b5c; border-color: #d5e5ff20; }
-:root[data-theme="dark"] .glass-home .glass-home-primary { background: linear-gradient(135deg, #386dce, #2759bf); color: #fff; }
-:root[data-theme="dark"] .glass-home .training-tile-art { background: linear-gradient(145deg, #324868ed, #233853d9); color: #c8daff; border-color: #a7c7ff3b; box-shadow: inset 0 1px 0 #ffffff25, inset 0 -2px 5px #091f443b, 0 9px 18px -12px #0007; }
-:root[data-theme="dark"] .glass-home .training-tile-badge { background: #203047; color: #d7e4ff; border-color: #4a6287; }
+:root[data-theme="dark"] .glass-home .glass-home-today { background: linear-gradient(125deg, #293d31ed, #203529e8 75%, #313d2fe0); }
+:root[data-theme="dark"] .glass-home-today-top .chip { background: #11271b70; border-color: #dbe8d720; }
+:root[data-theme="dark"] .glass-home .training-tile-art { background: linear-gradient(145deg, #344b3eed, #243b2edb); color: #cfe5d3; border-color: #b2cdb63b; box-shadow: inset 0 1px 0 #ffffff25, inset 0 -2px 5px #102b193b, 0 9px 18px -12px #0007; }
+:root[data-theme="dark"] .glass-home .training-tile-badge { background: #253a2d; color: #dae8da; border-color: #4b6652; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .glass-home {
-    --home-soft-ink: #bac9df;
-    --home-glass: rgba(30, 48, 76, .8);
-    --home-glass-line: rgba(153, 185, 239, .22);
-    --home-blue-deep: #bfd4ff;
-    --home-shadow: inset 0 1px 0 #c6dbff20, 0 20px 40px -30px #000b;
+    --home-soft-ink: var(--ink-2);
+    --home-glass: rgba(33, 50, 39, .88);
+    --home-glass-line: rgba(171, 201, 176, .22);
+    --home-accent-deep: var(--glass-primary-hover, #205b4e);
+    --home-shadow: inset 0 1px 0 #d2e6d120, 0 20px 40px -30px #000b;
   }
-  :root:not([data-theme="light"]) .glass-home .glass-home-today { background: linear-gradient(125deg, #263a55db, #1b3054d6 75%, #323756cc); }
-  :root:not([data-theme="light"]) .glass-home-today-top .chip { background: #0f203b5c; border-color: #d5e5ff20; }
-  :root:not([data-theme="light"]) .glass-home .glass-home-primary { background: linear-gradient(135deg, #386dce, #2759bf); color: #fff; }
-  :root:not([data-theme="light"]) .glass-home .training-tile-art { background: linear-gradient(145deg, #324868ed, #233853d9); color: #c8daff; border-color: #a7c7ff3b; box-shadow: inset 0 1px 0 #ffffff25, inset 0 -2px 5px #091f443b, 0 9px 18px -12px #0007; }
-  :root:not([data-theme="light"]) .glass-home .training-tile-badge { background: #203047; color: #d7e4ff; border-color: #4a6287; }
+  :root:not([data-theme="light"]) .glass-home .glass-home-today { background: linear-gradient(125deg, #293d31ed, #203529e8 75%, #313d2fe0); }
+  :root:not([data-theme="light"]) .glass-home-today-top .chip { background: #11271b70; border-color: #dbe8d720; }
+  :root:not([data-theme="light"]) .glass-home .training-tile-art { background: linear-gradient(145deg, #344b3eed, #243b2edb); color: #cfe5d3; border-color: #b2cdb63b; box-shadow: inset 0 1px 0 #ffffff25, inset 0 -2px 5px #102b193b, 0 9px 18px -12px #0007; }
+  :root:not([data-theme="light"]) .glass-home .training-tile-badge { background: #253a2d; color: #dae8da; border-color: #4b6652; }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-home .glass-home-today { background: linear-gradient(125deg, #fbfdff, #e5edff 75%, #e7e5fb); }
-  :root[data-theme="dark"] .glass-home .glass-home-today { background: #203450; }
+  .glass-home .glass-home-today { background: linear-gradient(125deg, #fdfdf9, #eaece5 75%, #e6ebe4); }
+  :root[data-theme="dark"] .glass-home .glass-home-today { background: #203529; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .glass-home .glass-home-today { background: #203450; }
+    :root:not([data-theme="light"]) .glass-home .glass-home-today { background: #203529; }
   }
 }
 @media (prefers-reduced-motion: reduce) {

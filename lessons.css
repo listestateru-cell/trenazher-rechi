@@ -15,7 +15,7 @@
 .lesson-steps li { display: flex; gap: 10px; align-items: center; color: var(--ink-2); font-size: 14px; padding-bottom: 14px; border-bottom: 2px solid var(--line); }
 .lesson-steps li > span { flex-shrink: 0; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-3); font-variant-numeric: tabular-nums; }
 .lesson-steps .is-current { color: var(--accent-ink); border-color: var(--accent); font-weight: 650; }
-.lesson-steps .is-current > span { background: var(--accent); color: white; }
+.lesson-steps .is-current > span { background: var(--accent-ink); color: var(--surface); }
 .lesson-steps .is-done > span { color: var(--good-ink); }
 .lesson-task { margin-bottom: 22px; display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 84px; }
 .lesson-task > * { margin-block: 0; }

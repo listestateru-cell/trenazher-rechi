@@ -52,7 +52,7 @@
 .imagination-session .thought-task { font-size: 19px; line-height: 1.55; }
 .imagination-materials:empty { display: none; }
 .imagination-media { display: grid; gap: 14px; padding-block: 8px 16px; }
-.imagination-media img { width: 100%; height: auto; max-height: 540px; object-fit: contain; border-radius: 16px; background: #f6efdf; }
+.imagination-media img { width: 100%; height: auto; max-height: 540px; object-fit: contain; border-radius: 16px; background: var(--surface-2); }
 .imagination-media audio { width: min(100%, 560px); }
 .imagination-media [hidden], .imagination-view [hidden] { display: none !important; }
 .imagination-directions { display: grid; gap: 14px; padding: 22px 0; border-top: 1px solid var(--line); }

@@ -19,7 +19,7 @@ window.TrainerSoloveyVinyl = (() => {
     carrier.append(part('disc'));
     const pocket = part('pocket');
     const logo = part('logo');
-    logo.append(part('logo-solo', 'Solo'), part('logo-vey', 'Vey'));
+    logo.append(part('logo-solo', 'Соло'), part('logo-vey', 'Вей'));
     const stamp = part('stamp');
     stamp.append(part('stamp-top', 'ЗАПИСЬ'), part('stamp-main', 'ЖИВАЯ РЕЧЬ'), part('stamp-bottom', 'ВАШ ГОЛОС'));
     el.append(body, carrier, pocket, logo, stamp);

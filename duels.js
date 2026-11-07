@@ -73,12 +73,19 @@ window.TrainerDuels = (() => {
   async function view(ctx, parts, params) {
     const retentionOwner = window.TrainerDrafts && TrainerDrafts.profile();
     const gid = parts[1], week = params && params.get('week');
-    const root = h('section', { class: 'duels-view stack' });
+    const intro = h('div', { class: 'stack' }), contents = h('div', { class: 'stack' });
     let data = null, error = '', destroyed = false, loading = false, pending = false;
     let armedId = null, session = null, rec = null, blob = null, uploadRequest = null, uploadBusy = false;
     let recording = false, starting = false, recordingContext = null, recordingStream = null, armedStream = null;
     let serverMs = Date.now(), clockAt = performance.now(), pollTimer = 0, ticker = 0, downloadUrl = '';
     let focus = params && params.get('match'), privateSession = null;
+    let recordControl = null, recordMatchId = null;
+    const hasVinyl = !!(window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control);
+    const recordTitle = h('h2'), recordTopic = h('p', { class: 'duel-topic' }), recordMount = h('div'), recordCaption = h('p', { class: 'small soft' });
+    const recordClock = h('div', { class: 'duel-clock num', role: 'timer', 'aria-label': 'Время поединка', hidden: true });
+    const recordPanel = hasVinyl ? h('section', { class: 'card solovey-recorder', hidden: true, 'aria-label': 'Запись поединка' },
+      recordTitle, recordTopic, recordMount, recordClock, recordCaption) : null;
+    const root = h('section', { class: 'duels-view stack' }, intro, recordPanel, contents);
     const alive = () => !destroyed && ctx.alive();
     const now = () => serverMs + performance.now() - clockAt;
     const setClock = (stamp) => { const value = Date.parse(stamp); if (Number.isFinite(value)) { serverMs = value; clockAt = performance.now(); } };
@@ -93,7 +100,11 @@ window.TrainerDuels = (() => {
     const inMatch = (match) => !!own(match);
     const beforeUnload = (event) => { if (recording || starting || blob) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);
-    render(ctx, root);
+    if (render(ctx, root) === false) {
+      destroyed = true;
+      window.removeEventListener('beforeunload', beforeUnload);
+      return null;
+    }
 
     function action(label, onClick, disabled = false, primary = false) {
       return h('button', { class: `btn ${primary ? '' : 'ghost'}`, type: 'button', disabled: disabled || pending, onclick: onClick }, label);
@@ -104,6 +115,7 @@ window.TrainerDuels = (() => {
       const selected = matches.find((match) => match.id === (armedId || focus));
       const demoWeek = data && ['demo', 'demo_finished'].includes(data.phase);
       const demoFinals = demoWeek && data.phase === 'demo_finished' && data.demo_completed === true;
+      syncRecordPanel(matches);
       const nodes = [
         h('a', { class: 'groups-back', href: `#/groups/${enc(gid)}` }, icon('back'), 'К группе'),
         h('header', { class: 'groups-heading' }, h('div', { class: 'groups-heading-copy' }, h('p', { class: 'groups-eyebrow' }, 'Минута ассоциаций'),
@@ -147,8 +159,52 @@ window.TrainerDuels = (() => {
           tableCard(data.table || data.league || []),
           h('details', { class: 'card duel-all' }, h('summary', null, `Все встречи · ${matches.length}`), h('div', { class: 'duel-match-list' }, matches.filter((match) => !inMatch(match)).map((match) => matchCard(match)))),
         ]];
-      root.replaceChildren(...nodes.flat(Infinity).filter((node) => node != null && node !== false));
+      intro.replaceChildren(...nodes.slice(0, 2));
+      contents.replaceChildren(...nodes.slice(2).flat(Infinity).filter((node) => node != null && node !== false));
       paintTimer();
+    }
+    function recordAvailability(match) {
+      const self = own(match), waitingOpen = !data || data.phase !== 'scheduled';
+      const canReady = self && match.can_ready && waitingOpen && !recording && !starting && !blob;
+      const canResume = self && self.ready && !match.own_session_id && armedId !== match.id
+        && (['countdown', 'live'].includes(match.status) || waitingOpen && match.status === 'waiting') && !recording && !starting && !blob;
+      const actualRecording = recording && armedId === match.id;
+      const armed = self && armedId === match.id && !blob && ['waiting', 'countdown', 'live'].includes(match.status);
+      return { canReady, canResume, actualRecording, armed,
+        visible: !!self && !demonstration(match) && (actualRecording || !finished(match) && (canReady || canResume || armed)) };
+    }
+    function syncRecordPanel(matches) {
+      if (!recordPanel) return;
+      const preferred = matches.find(match => match.id === (armedId || focus));
+      const match = preferred && recordAvailability(preferred).visible ? preferred : matches.find(item => recordAvailability(item).visible);
+      recordMatchId = match ? match.id : null;
+      recordPanel.hidden = !match;
+      if (!match) {
+        recordClock.hidden = true; delete recordClock.dataset.duelClock;
+        if (recordControl) recordControl.setState({ recording: false, disabled: true, hidden: true });
+        return;
+      }
+      if (!recordControl) {
+        recordControl = TrainerSoloveyVinyl.control({ onStart: () => {
+          const current = data && data.matches.find(item => item.id === recordMatchId);
+          const availability = current && recordAvailability(current);
+          if (availability && (availability.canReady || availability.canResume)) return ready(current);
+        }, label: 'Готов · проверить микрофон' });
+        recordMount.replaceChildren(recordControl.el);
+      }
+      const { canReady, canResume, actualRecording, armed } = recordAvailability(match);
+      recordControl.setState({ recording: actualRecording, disabled: pending || starting || (!canReady && !canResume), hidden: false,
+        label: canResume ? 'Включить микрофон и продолжить' : 'Готов · проверить микрофон' });
+      const opponent = (match.players || []).find(player => !player.is_self);
+      recordTitle.textContent = opponent ? `Поединок с ${opponent.name}` : 'Запись поединка';
+      recordTopic.textContent = match.topic ? `Общее слово: ${match.topic}` : 'Слово откроется в момент старта.';
+      recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически' : canResume ? 'Включить микрофон и продолжить' : armed ? 'Готов · ждём общего старта' : 'Готов · проверить микрофон';
+      recordClock.hidden = !(['countdown', 'live'].includes(match.status) || actualRecording);
+      recordClock.dataset.duelClock = match.id;
+    }
+    function selectRecording(match) {
+      focus = match.id; draw();
+      if (recordPanel && recordPanel.scrollIntoView) recordPanel.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
     function finalWeek(matches) {
       const participants = new Map(matches.flatMap((match) => match.players || []).map((player) => [player.id, player]));
@@ -196,8 +252,9 @@ window.TrainerDuels = (() => {
     }
     function matchCard(match, selected = false) {
       const self = own(match), demo = demonstration(match), done = finished(match) || demo;
-      const waitingOpen = !data || data.phase !== 'scheduled';
       const result = match.results || [];
+      const { canReady, canResume } = recordAvailability(match);
+      const inRecordPanel = hasVinyl && recordMatchId === match.id;
       return h('article', { class: `card duel-match ${selected ? 'duel-selected' : ''}`, 'data-match': match.id },
         h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
           h('span', { class: 'small soft' }, demo ? 'Пример результата' : statuses[match.status] || match.status)),
@@ -207,7 +264,7 @@ window.TrainerDuels = (() => {
         !demo ? h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))) : null,
         match.topic ? h('p', { class: 'duel-topic' }, 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, 'Слово откроется в момент старта.'),
         !demo && match.own_error ? h('p', { class: 'groups-error', role: 'alert' }, match.own_error, ' Подробности — в «Мой ответ».') : null,
-        !demo && (['countdown', 'live'].includes(match.status) || recording && armedId === match.id) ? h('div', { class: 'duel-clock num', 'data-duel-clock': match.id, role: 'timer', 'aria-label': 'Время поединка' }, '—') : null,
+        !demo && !inRecordPanel && (['countdown', 'live'].includes(match.status) || recording && armedId === match.id) ? h('div', { class: 'duel-clock num', 'data-duel-clock': match.id, role: 'timer', 'aria-label': 'Время поединка' }, '—') : null,
         recording && armedId === match.id ? h('p', { class: 'duel-recording', role: 'status' }, 'Идёт запись. Через минуту она отправится автоматически.') : null,
         done ? h('div', { class: 'duel-results' }, result.map((row) => h('div', { class: 'duel-result-row' },
           h('strong', null, ((match.players || []).find((player) => player.id === row.user_id) || {}).name || 'Участник'),
@@ -215,9 +272,9 @@ window.TrainerDuels = (() => {
           h('p', { class: 'small soft' }, `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
           h('p', { class: 'soft' }, match.draw ? 'Ничья' : `Победитель: ${((match.players || []).find((player) => player.id === match.winner_id) || {}).name || '—'}`)) : null,
         !demo ? h('div', { class: 'row duel-actions' },
-          self && match.can_ready && waitingOpen && !recording && !starting && !blob ? action('Готов · проверить микрофон', () => ready(match), false, true) : null,
-          self && self.ready && !match.own_session_id && armedId !== match.id && (['countdown','live'].includes(match.status) || waitingOpen && match.status === 'waiting') && !recording && !starting && !blob
-            ? action('Включить микрофон и продолжить', () => ready(match), false, true) : null,
+          canReady && !inRecordPanel ? action(hasVinyl ? 'Открыть запись встречи' : 'Готов · проверить микрофон', () => hasVinyl ? selectRecording(match) : ready(match), false, true) : null,
+          canResume && !inRecordPanel
+            ? action(hasVinyl ? 'Открыть запись встречи' : 'Включить микрофон и продолжить', () => hasVinyl ? selectRecording(match) : ready(match), false, true) : null,
           self && match.can_cancel && !recording && !starting ? action('Отменить готовность', () => mutate(match, 'cancel')) : null,
           self && match.can_reset && !recording && !starting ? action((match.reset_requested_by || []).includes(self.id) ? 'Ждём согласия соперника' : 'Согласиться на повтор', () => mutate(match, 'reset'), (match.reset_requested_by || []).includes(self.id)) : null,
           match.own_session_id && !recording ? h('a', { class: 'btn ghost', href: `#/s/${enc(match.own_session_id)}` }, 'Мой ответ') : null) : null);
@@ -351,6 +408,7 @@ window.TrainerDuels = (() => {
     async function finishRecording() {
       if (!recording || !rec) return;
       recording = false;
+      if (recordControl) recordControl.setState({ recording: false, disabled: true });
       const stopped = rec, recordedSession = session, context = recordingContext; rec = null;
       const headers = { 'X-Duel-Nonce': recordedSession.duel_nonce };
       blob = await stopped.stop({ headers });
@@ -380,6 +438,7 @@ window.TrainerDuels = (() => {
     return { retentionOwner, retentionSession: () => recording || starting || blob || uploadBusy || pending ? null : privateSession || session,
       destroy() {
       destroyed = true; clearTimeout(pollTimer); clearInterval(ticker); window.removeEventListener('beforeunload', beforeUnload);
+      if (recordControl) recordControl.destroy();
       root.querySelectorAll('audio').forEach((audio) => audio.pause());
       if (recording && rec) finishRecording();
       else if (!starting) closeOwnMic();

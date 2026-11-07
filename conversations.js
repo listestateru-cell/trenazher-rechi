@@ -225,12 +225,20 @@ window.TrainerConversations = (() => {
       placeholder: 'Ответьте собеседнику своими словами', 'aria-describedby': answerId + '-help', oninput: onTextInput, onfocus: () => pauseAudio() });
     const textStatus = h('p', { class: 'small soft', role: 'status', 'aria-live': 'polite', hidden: true });
     const textSend = button('Отправить ответ', sendText, true, true);
-    const micButton = button('Ответить голосом', beginRecording); micButton.prepend(icon('mic')); micButton.setAttribute('aria-label', 'Ответить голосом');
+    const voiceControl = window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control
+      ? TrainerSoloveyVinyl.control({ onStart: beginRecording, label: 'Ответить голосом' }) : null;
+    const micButton = voiceControl ? voiceControl.el : button('Ответить голосом', beginRecording);
+    if (!voiceControl) micButton.prepend(icon('mic'));
+    micButton.setAttribute('aria-label', 'Ответить голосом');
+    const voicePanel = voiceControl ? h('div', { class: 'solovey-recorder', hidden: true }, micButton, h('p', { class: 'small soft' }, 'Запись')) : null;
+    const composerContent = h('div', { class: 'stack' });
+    // Пластинка остаётся в DOM: обновления диалога не перезапускают её вращение.
+    composer.append(voicePanel, composerContent);
     const finishEarly = button('Завершить и получить разбор', () => mutate('finish'));
     const textComposer = h('div', { class: 'conversation-text-composer stack' }, h('div', { class: 'field' },
       h('label', { for: answerId, class: 'conversation-answer-label' }, 'Ваш ответ'), answerInput,
       h('p', { id: answerId + '-help', class: 'small soft' }, 'Можно ответить без звука. Черновик сохраняется на этом устройстве.')),
-      h('div', { class: 'conversation-input-actions' }, textSend, micButton), textStatus, finishEarly);
+      h('div', { class: 'conversation-input-actions' }, textSend, voiceControl ? null : micButton), textStatus, finishEarly);
     const messages = new Map();
     const live = () => !destroyed && ctx.alive() && (!owner || !window.TrainerDrafts || owner === TrainerDrafts.profile());
     const takePath = index => `${endpoint(session.id)}/takes/${index}`;
@@ -290,6 +298,10 @@ window.TrainerConversations = (() => {
       textSend.disabled = locked || !!pending || (!textPending && !answerInput.value.trim());
       textSend.textContent = textSending ? 'Отправляю…' : textPending ? 'Повторить отправку' : 'Отправить ответ';
       micButton.disabled = locked || !!textPending || !!pending || conversation(session).phase !== 'awaiting_user';
+      if (voiceControl) {
+        voicePanel.hidden = false;
+        voiceControl.setState({ recording: false, disabled: micButton.disabled, hidden: false, label: 'Ответить голосом' });
+      }
       finishEarly.hidden = !answerCount() || !!textPending;
       finishEarly.disabled = locked;
       if (textPending && textPending.error) { textStatus.textContent = textPending.error + (textDurable ? ' Текст сохранён. Повторите отправку этого ответа.' : ' Текст остался в этой странице. Не закрывайте её до отправки или скопируйте ответ.'); textStatus.hidden = false; }
@@ -485,49 +497,53 @@ window.TrainerConversations = (() => {
     }
     function drawComposer() {
       const phase = conversation(session).phase, locked = busy || !!stopping || textSending;
+      if (voiceControl) {
+        voicePanel.hidden = !recorder;
+        voiceControl.setState({ recording: !!recorder, disabled: locked || openingMic, hidden: !recorder, label: 'Ответить голосом' });
+      }
       const currentError = phase === 'awaiting_user' && ((session.takes || [])[conversation(session).active_take ?? currentIndex(session)] || {}).status === 'error';
       const wantsText = !recorder && !stopping && !pending && (phase === 'awaiting_user' || !!textPending) && !currentError && (session.analysis || {}).status !== 'error';
       if (wantsText && showingTextComposer) { updateTextComposer(locked); return; }
-      composer.replaceChildren(); composer.hidden = false; showingTextComposer = false;
+      composerContent.replaceChildren(); composer.hidden = false; showingTextComposer = false;
       if (recorder) {
-        composer.append(h('h2', null, 'Ваш ответ'), h('p', { class: 'conversation-recording', role: 'status' }, icon('mic'), 'Идёт запись'),
+        composerContent.append(h('h2', null, 'Ваш ответ'), h('p', { class: 'conversation-recording', role: 'status' }, icon('mic'), 'Идёт запись'),
           h('div', { class: 'row' }, button('Закончить и отправить', stopRecording, true), button('Отменить запись', cancelRecording), button('Написать вместо записи', () => stopRecording({ send: false }))));
-        if (recordWarning) composer.append(h('p', { class: 'small soft', role: 'status' }, recordWarning));
+        if (recordWarning) composerContent.append(h('p', { class: 'small soft', role: 'status' }, recordWarning));
         return;
       }
       if (pending) {
-        composer.append(h('h2', null, pending.incomplete ? 'Восстановлена незавершённая запись' : 'Запись вашего ответа'));
+        composerContent.append(h('h2', null, pending.incomplete ? 'Восстановлена незавершённая запись' : 'Запись вашего ответа'));
         if (pending.incomplete) {
           if (!pending.controls) pending.controls = recoveredRecordingControls(pending, {
             send: sendAnswer, recordAgain: recordAgain, discard: discardPending,
           });
-          pending.controls.update(); composer.append(pending.controls.el);
+          pending.controls.update(); composerContent.append(pending.controls.el);
         } else {
           if (!pending.player) pending.player = h('audio', { controls: true, preload: 'metadata', src: pending.downloadUrl, 'aria-label': 'Неотправленный ответ' });
-          composer.append(pending.player, h('div', { class: 'row' }, button(pending.sending ? 'Отправляю…' : 'Отправить ответ', sendAnswer, true, pending.sending || pending.blob.size < 1200),
+          composerContent.append(pending.player, h('div', { class: 'row' }, button(pending.sending ? 'Отправляю…' : 'Отправить ответ', sendAnswer, true, pending.sending || pending.blob.size < 1200),
             h('a', { class: 'btn ghost', href: pending.downloadUrl, download: 'ответ' + (pending.blob.type.includes('mp4') ? '.m4a' : '.webm') }, 'Скачать запись'),
             button('Записать заново', recordAgain, false, pending.sending), confirmButton('Убрать копию', 'Убрать эту запись?', discardPending)));
-          if (pending.blob.size < 1200) composer.append(h('p', { class: 'small soft' }, 'Запись слишком короткая для отправки. Её можно скачать или записать заново.'));
+          if (pending.blob.size < 1200) composerContent.append(h('p', { class: 'small soft' }, 'Запись слишком короткая для отправки. Её можно скачать или записать заново.'));
         }
-        if (pending.error) composer.append(h('p', { class: 'conversation-error', role: 'status' }, pending.error));
-        composer.append(button('Написать вместо записи', chooseText, false, pending.sending || phase !== 'awaiting_user'));
+        if (pending.error) composerContent.append(h('p', { class: 'conversation-error', role: 'status' }, pending.error));
+        composerContent.append(button('Написать вместо записи', chooseText, false, pending.sending || phase !== 'awaiting_user'));
         return;
       }
       const takeError = phase === 'awaiting_user' && ((session.takes || [])[conversation(session).active_take ?? currentIndex(session)] || {}).status === 'error';
       const analysisError = (session.analysis || {}).status === 'error';
       if (phase === 'opponent_error' || takeError || analysisError) {
-        composer.append(h('h2', null, takeError ? 'Не удалось распознать ответ' : analysisError ? 'Разбор пока не готов' : 'Собеседник пока не ответил'),
+        composerContent.append(h('h2', null, takeError ? 'Не удалось распознать ответ' : analysisError ? 'Разбор пока не готов' : 'Собеседник пока не ответил'),
           h('p', { class: 'soft' }, conversation(session).error || (session.analysis || {}).error || (session.takes || []).find(take => take.error)?.error || 'История сохранена. Можно повторить этот шаг.'),
           button(takeError ? 'Попробовать ответить ещё раз' : 'Повторить этот шаг', () => mutate('retry'), true, locked));
       } else if (wantsText) {
-        loadTextDraft(); updateTextComposer(locked); composer.append(textComposer); showingTextComposer = true;
-      } else if (isWorking(session) || stopping) composer.append(h('p', { role: 'status' }, stageText()));
-      else if (phase === 'ready_for_analysis' && (session.analysis || {}).status !== 'done') composer.append(button('Получить разбор', () => mutate('finish'), true, locked));
+        loadTextDraft(); updateTextComposer(locked); composerContent.append(textComposer); showingTextComposer = true;
+      } else if (isWorking(session) || stopping) composerContent.append(h('p', { role: 'status' }, stageText()));
+      else if (phase === 'ready_for_analysis' && (session.analysis || {}).status !== 'done') composerContent.append(button('Получить разбор', () => mutate('finish'), true, locked));
       else composer.hidden = true;
       if (!wantsText && answerCount() > 0 && ['awaiting_user', 'opponent_error', 'opponent_pending'].includes(phase)) {
-        composer.append(button('Завершить и получить разбор', () => mutate('finish'), false, locked));
+        composerContent.append(button('Завершить и получить разбор', () => mutate('finish'), false, locked));
       }
-      if (composer.childElementCount) composer.hidden = false;
+      if (composerContent.childElementCount) composer.hidden = false;
     }
     function drawReview() {
       const analysis = session.analysis || {}, result = analysis.result;
@@ -719,7 +735,11 @@ window.TrainerConversations = (() => {
     root.append(h('a', { class: 'back', href: href() }, icon('back'), 'К ситуациям'), h('header', { class: 'conversation-heading' }, h('p', { class: 'label' }, customStory(session) ? 'Сложный разговор · своя история' : 'Сложный разговор'), title,
       levelTitle ? h('p', { class: 'small soft conversation-session-level' }, 'Уровень: ', levelTitle, levelDescription ? '. ' + levelDescription : '') : null, stage),
       voicePreference, contextBox, errorBox, history, composer, audioCopies, review);
-    render(ctx, root);
+    if (render(ctx, root) === false) {
+      destroyed = true;
+      if (voiceControl) voiceControl.destroy();
+      return null;
+    }
     await restoreAudio(); loadTextDraft(); await restoreTextBackup(); await reconcileText();
     if (textPending && pending) { parkAudio(pending); pending = null; }
     draw(); schedulePoll();
@@ -728,6 +748,7 @@ window.TrainerConversations = (() => {
     return { retentionOwner: owner, retentionSession: () => busy || loading || recorder || stopping || openingMic || pending || textPending || textSending || parkedAudio.size ? null : session,
       destroy() {
       destroyed = true; startToken++; clearTimeout(pollTimer);
+      if (voiceControl) voiceControl.destroy();
       window.removeEventListener('trainer:backendchange', onReconnect); window.removeEventListener('beforeunload', beforeUnload);
       pauseAudio();
       if (recorder) recorder.cancel({ preserve: true }); recorder = null;

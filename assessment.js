@@ -39,6 +39,8 @@ window.TrainerAssessment = (() => {
     const audioPath = () => path('audio');
     const replace = (...children) => root.replaceChildren(...keep(children));
     const button = (label, action, primary = false, disabled = false, data = {}) => h('button', { type: 'button', class: primary ? 'btn' : 'btn ghost', onclick: action, disabled, ...data }, label);
+    const vinyl = window.TrainerSoloveyVinyl?.control ? TrainerSoloveyVinyl.control({ onStart: () => beginRecording(), label: 'Начать чтение' }) : null;
+    if (vinyl) vinyl.el.setAttribute('data-assessment-begin', '');
     const remaining = () => Math.max(0, Math.ceil(60 - (performance.now() - startedAt) / 1000));
     const clockText = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
     const retries = () => Number.isFinite(state().restarts_left) ? state().restarts_left : Number.isFinite(state().attempt_number) ? Math.max(0, 3 - state().attempt_number) : 2;
@@ -102,13 +104,14 @@ window.TrainerAssessment = (() => {
     }
     function intro() {
       const currentRound = list(overview.rounds).find(round => round.id === state().round_id) || list(overview.rounds).find(round => round.available && !round.confirmed_session_id);
+      if (vinyl) vinyl.setState({ recording: false, disabled: locked() || !!pending, hidden: false, label: busy ? 'Готовлю запись…' : 'Начать чтение' });
       return h('section', { class: 'card assessment-preparation stack', 'data-assessment-preparation': '' },
         h('span', { class: 'chip' }, currentRound?.title || 'Первый срез'), h('h2', null, 'Минута чтения вслух'),
         h('p', null, 'Сохраним исходные замеры. Через месяц повторим с новым текстом.'),
         h('p', null, 'Выберите тихое место, где вас не отвлекут. Читайте в обычном темпе.'),
         h('p', { class: 'small soft' }, 'Текст откроется после запуска микрофона. На чтение — до 60 секунд.'),
         h('p', { class: 'small soft' }, 'Одна попытка и ещё два повтора, если что-то помешало. При каждом повторе будет новый текст.'),
-        button(busy ? 'Готовлю запись…' : 'Начать чтение', beginRecording, true, locked() || !!pending, { 'data-assessment-begin': '' }),
+        vinyl ? h('div', { class: 'solovey-recorder' }, vinyl.el) : button(busy ? 'Готовлю запись…' : 'Начать чтение', beginRecording, true, locked() || !!pending, { 'data-assessment-begin': '' }),
         h('details', null, h('summary', null, 'Как проходит срез'),
           h('ol', { class: 'assessment-instructions' }, h('li', null, 'Нажмите «Начать чтение» и разрешите микрофон. Текст появится, когда запись уже начнётся.'),
             h('li', null, 'Читайте вслух до остановки записи через минуту. Если прочитаете всё раньше, нажмите «Закончил читать».'),
@@ -126,8 +129,10 @@ window.TrainerAssessment = (() => {
     }
     function recordingCard() {
       timerNode = h('strong', { class: 'assessment-countdown num', role: 'timer', 'aria-label': 'Время до конца чтения', 'data-assessment-timer': '' }, clockText(remaining()));
+      if (vinyl) vinyl.setState({ recording: true, disabled: true, hidden: false, label: 'Чтение вслух' });
       return h('section', { class: 'card assessment-reading stack', 'data-assessment-reading': '' },
         h('div', { class: 'assessment-reading-head' }, h('span', { class: 'assessment-recording-label' }, h('i', { 'aria-hidden': 'true' }), 'Идёт запись'), timerNode),
+        vinyl ? h('div', { class: 'solovey-recorder solovey-recorder--compact' }, vinyl.el) : null,
         h('h2', null, 'Читайте вслух'), h('div', { class: 'assessment-reading-text', tabindex: -1 }, shownText),
         button('Закончил читать', () => stopRecording(true), true, stopping || busy, { 'data-assessment-finish-reading': '' }),
         h('p', { class: 'small soft' }, 'Запись остановится сама через минуту. Можно не успеть прочитать весь текст.'));
@@ -220,6 +225,7 @@ window.TrainerAssessment = (() => {
     }
     function draw() {
       if (!live()) return;
+      if (vinyl) vinyl.setState({ recording: !!recording, disabled: true, hidden: true });
       const heading = h('header', { class: 'assessment-heading stack' }, h('a', { class: 'back', href: archived ? '#/assessment' : '#/profile' }, icon('back'), archived ? 'К срезам' : 'Мой профиль'),
         h('h1', null, 'Точка старта'), h('p', { class: 'soft' }, 'Замеры чтения и понимания текста.'));
       if (!overview) { replace(heading, h('section', { class: 'card stack' }, h('p', { role: loading ? 'status' : 'alert' }, loading ? 'Загружаю срезы…' : error), !loading ? button('Попробовать ещё раз', load) : null)); return; }
@@ -401,9 +407,10 @@ window.TrainerAssessment = (() => {
     function beforeUnload(event) { if (recording || stopping || busy) { event.preventDefault(); event.returnValue = ''; } }
     function reconnect() { if (!locked()) refresh(); }
     render(ctx, root); await load();
+    if (!live()) { if (vinyl) vinyl.destroy(); return null; }
     window.addEventListener('beforeunload', beforeUnload); window.addEventListener('trainer:backendchange', reconnect);
     return { retentionOwner: owner, retentionSession: () => locked() || pending ? null : session,
-      destroy() { disposed = true; capture++; clearTimer(); clearTimeout(poller); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; clearPending(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
+      destroy() { disposed = true; capture++; clearTimer(); clearTimeout(poller); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); clearPending(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
   }
   return { view, homeCard: overview => card('home', overview), progressCard: overview => card('progress', overview), profileCard: overview => card('profile', overview) };
 })();

@@ -2244,16 +2244,17 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     const answerFormat = h('div', { class: 'learning-answer-format', id: `thought-format-${p.id}`, hidden: true });
     const textBox = h('div', { class: 'field' }, answerLabel, answer, submit);
     const recordStatus = h('span', { class: 'num', role: 'status' });
-    const recordButton = h('button', { class: 'btn ghost', type: 'button', onclick: beginVoice }, icon('mic'), 'Начать запись');
+    const voiceVinyl = window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control ? TrainerSoloveyVinyl.control({ onStart: beginVoice }) : null;
+    const recordButton = voiceVinyl ? voiceVinyl.el : h('button', { class: 'btn ghost', type: 'button', onclick: beginVoice }, icon('mic'), 'Начать запись');
     const stopButton = h('button', { class: 'btn', type: 'button', hidden: true, onclick: finishVoice }, icon('pause'), 'Закончить запись');
     const cancelButton = h('button', { class: 'btn ghost', type: 'button', hidden: true, onclick: cancelVoice }, 'Отменить запись');
     const sendAudio = h('button', { class: 'btn', type: 'button', hidden: true, onclick: submitVoice }, 'Отправить запись тренеру', icon('arrow'));
     const preview = h('div', { class: 'thought-preview' });
     const voiceRestore = h('div', { class: 'callout', hidden: true, 'aria-live': 'polite' });
     const voiceInstruction = h('p', { class: 'small soft' }, 'Произнесите новую версию. До 90 секунд: закончите запись, когда выразили мысль.');
-    const voiceBox = h('div', { class: 'thought-voice', hidden: true },
-      voiceInstruction,
-      h('div', { class: 'row' }, recordButton, stopButton, cancelButton, recordStatus), preview, sendAudio);
+    const voiceBox = h('div', { class: 'thought-voice' + (voiceVinyl ? ' solovey-recorder' : ''), hidden: true },
+      voiceInstruction, voiceVinyl ? recordButton : null,
+      h('div', { class: 'row' }, voiceVinyl ? null : recordButton, stopButton, cancelButton, recordStatus), preview, sendAudio);
     const form = h('form', { class: 'thought-form', onsubmit: submitText },
       answerFormat,
       h('div', { class: 'seg thought-modes', role: 'group', 'aria-label': 'Как ответить' }, textButton, voiceButton),
@@ -2540,9 +2541,9 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       voiceButton.setAttribute('aria-pressed', String(mode === 'voice'));
       textBox.hidden = mode !== 'text';
       voiceBox.hidden = mode !== 'voice';
-      recordButton.hidden = recording;
+      recordButton.hidden = voiceVinyl ? false : recording;
       recordButton.disabled = blocked;
-      recordButton.replaceChildren(icon('mic'), blob ? 'Записать заново' : 'Начать запись');
+      if (!voiceVinyl) recordButton.replaceChildren(icon('mic'), blob ? 'Записать заново' : 'Начать запись');
       stopButton.hidden = !recording || !rec;
       cancelButton.hidden = !recording && !blob;
       cancelButton.disabled = sending || preparingVoice;
@@ -2598,6 +2599,8 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
         transferArea.hidden = true;
         hintButton.hidden = true;
       }
+      if (voiceVinyl) voiceVinyl.setState({ recording: recording && !!rec, disabled: recordButton.disabled,
+        hidden: mode !== 'voice', label: blob ? 'Записать заново' : 'Запись' });
     }
     answer.addEventListener('input', controls);
 
@@ -2684,7 +2687,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       controls();
     }
     function latestReviewForCreative() { return (p.attempts || []).some(a => a.status === 'done'); }
-    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); if (creative) creative.destroy(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
+    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); if (voiceVinyl) voiceVinyl.destroy(); if (creative) creative.destroy(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
     update(initial);
     restoreVoiceDraft();
     return controller;

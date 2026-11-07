@@ -100,6 +100,8 @@ window.TrainerLessons = (() => {
     const task = h('section', { class: 'card lesson-task', tabindex: -1 });
     const feedback = h('section', { class: 'lesson-feedback', 'aria-label': 'Ответы и обратная связь' });
     const composer = h('section', { class: 'card lesson-composer' });
+    const composerBody = h('div', { class: 'stack lesson-composer-body' });
+    const recordingBody = h('div', { class: 'stack lesson-recording-body', hidden: true });
     const alert = h('p', { class: 'thought-error', role: 'alert', hidden: true });
     const status = h('p', { class: 'small soft', role: 'status', hidden: true });
     const label = h('label', { for: 'lesson-answer' }, 'Ваш ответ');
@@ -109,8 +111,12 @@ window.TrainerLessons = (() => {
     } });
     const help = h('p', { id: 'lesson-answer-help', class: 'small soft' }, 'Можно написать ответ или записать голосом. Отправка начинается только по вашей кнопке.');
     const send = button('Отправить ответ', sendText, true);
-    const micButton = button('Ответить голосом', beginRecording); micButton.prepend(icon('mic'));
-    const textComposer = h('div', { class: 'stack' }, label, input, help, h('div', { class: 'row' }, send, micButton));
+    const vinyl = window.TrainerSoloveyVinyl?.control ? TrainerSoloveyVinyl.control({ onStart: beginRecording, label: 'Ответить голосом' }) : null;
+    const micButton = vinyl ? vinyl.el : button('Ответить голосом', beginRecording);
+    if (!vinyl) micButton.prepend(icon('mic'));
+    const vinylArea = vinyl ? h('div', { class: 'solovey-recorder' }, micButton) : null;
+    const textComposer = h('div', { class: 'stack' }, label, input, help, h('div', { class: 'row' }, send, vinyl ? null : micButton));
+    append(composer, composerBody, vinylArea, recordingBody);
 
     function loadText() {
       if (inputStage === currentStage()) return;
@@ -242,17 +248,24 @@ window.TrainerLessons = (() => {
       if (!live()) return;
       const disabled = controlsLocked();
       composer.hidden = !canAnswer() && !recording && !pending && !stopping;
-      if (recording) { replace(composer, h('h2', null, 'Идёт запись ответа'), h('p', { role: 'status' }, audioLimit() ? `Закончите запись, когда выразите мысль. До ${audioLimit()} секунд.` : 'Рассказывайте в своём темпе. Когда закончите, остановите запись и отправьте её.'), h('div', { class: 'row' }, button('Закончить запись', stopRecording, true), button('Отменить запись', cancelRecording))); return; }
-      if (stopping) { replace(composer, h('p', { role: 'status' }, 'Сохраняю запись на устройстве…')); return; }
+      composerBody.hidden = !!recording;
+      recordingBody.hidden = !recording;
+      if (vinyl) {
+        const visible = !!recording || canAnswer() && !pending && !stopping;
+        vinylArea.hidden = !visible;
+        vinyl.setState({ recording: !!recording, disabled: disabled || !!draft.submittedText || !canAnswer(), hidden: !visible, label: 'Ответить голосом' });
+      }
+      if (recording) { replace(recordingBody, h('h2', null, 'Идёт запись ответа'), h('p', { role: 'status' }, audioLimit() ? `Закончите запись, когда выразите мысль. До ${audioLimit()} секунд.` : 'Рассказывайте в своём темпе. Когда закончите, остановите запись и отправьте её.'), h('div', { class: 'row' }, button('Закончить запись', stopRecording, true), button('Отменить запись', cancelRecording))); return; }
+      if (stopping) { replace(composerBody, h('p', { role: 'status' }, 'Сохраняю запись на устройстве…')); return; }
       if (pending) {
         if (pending.incomplete) {
           pending.sending = disabled || !canAnswer();
           if (!pending.controls) pending.controls = recoveredRecordingControls(pending, { send: sendAudio, recordAgain: () => { if (!canAnswer() || controlsLocked()) return; clearPending(); draw(); beginRecording(); }, discard: discardAudio });
           pending.controls.update(); composer.hidden = false;
-          replace(composer, h('h2', null, 'Восстановлена незавершённая запись'), pending.controls.el, pending.error ? h('p', { class: 'thought-error' }, pending.error) : null); return;
+          replace(composerBody, h('h2', null, 'Восстановлена незавершённая запись'), pending.controls.el, pending.error ? h('p', { class: 'thought-error' }, pending.error) : null); return;
         }
         if (!pending.player) pending.player = h('audio', { controls: true, preload: 'metadata', src: pending.downloadUrl, 'aria-label': 'Неотправленный ответ' });
-        composer.hidden = false; replace(composer, h('h2', null, 'Ваша запись'), pending.player, h('div', { class: 'row' }, button(busy ? 'Отправляю…' : pending.error ? 'Повторить отправку' : 'Отправить запись', sendAudio, true, disabled || pending.blob.size < 1200 || !canAnswer()),
+        composer.hidden = false; replace(composerBody, h('h2', null, 'Ваша запись'), pending.player, h('div', { class: 'row' }, button(busy ? 'Отправляю…' : pending.error ? 'Повторить отправку' : 'Отправить запись', sendAudio, true, disabled || pending.blob.size < 1200 || !canAnswer()),
           h('a', { class: 'btn ghost', href: pending.downloadUrl, download: pending.blob.type.includes('mp4') ? 'пересказ.m4a' : 'ответ.webm' }, 'Скачать запись'),
           confirmButton('Убрать запись', 'Убрать эту запись?', discardAudio)), pending.error ? h('p', { class: 'thought-error' }, pending.error) : null); return;
       }
@@ -261,7 +274,7 @@ window.TrainerLessons = (() => {
       label.textContent = lesson().kind === 'retell' ? 'Ваш пересказ' : currentStage() === 0 ? 'Где теряется смысл и чего не хватает слушателю?' : 'Ваш рассказ';
       send.disabled = disabled || !input.value.trim(); send.textContent = busy ? 'Отправляю…' : draft.submittedText ? 'Повторить отправку' : 'Отправить ответ';
       micButton.disabled = disabled || !!draft.submittedText;
-      if (composer.firstElementChild !== textComposer) replace(composer, textComposer);
+      if (composerBody.firstElementChild !== textComposer) replace(composerBody, textComposer);
     }
     async function sendText() {
       if (!live() || controlsLocked() || pending || !canAnswer()) return;
@@ -359,10 +372,11 @@ window.TrainerLessons = (() => {
     }
     render(ctx, h('div', { class: 'lesson-page' }, h('a', { class: 'back', href: href(lesson().kind) }, icon('back'), metadata(lesson().kind).title), header, steps, task, alert, status, feedback, composer,
       h('div', { class: 'after-actions' }, h('a', { class: 'btn ghost', href: href(lesson().kind) }, 'К другим заданиям'), h('a', { class: 'btn ghost', href: '#/history' }, 'История'))));
+    if (!live()) { if (vinyl) vinyl.destroy(); return null; }
     draw(); schedule();
     window.addEventListener('beforeunload', beforeUnload); window.addEventListener('trainer:backendchange', reconnect);
     return { retentionOwner: owner, retentionSession: () => busy || stopping || recording || pending || draft.submittedText ? null : session,
-      destroy() { disposed = true; captureToken++; clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
+      destroy() { disposed = true; captureToken++; clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
   }
   return { kinds, entryCards, catalog: catalogView, session: sessionView };
 })();

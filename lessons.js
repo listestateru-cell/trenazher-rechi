@@ -80,7 +80,7 @@ window.TrainerLessons = (() => {
 
   async function sessionView(ctx, initial) {
     let session = initial, disposed = false, busy = false, recording = null, recordStream = null, stopping = false, pending = null, error = '', warning = '';
-    let pollTimer = 0, recordTimer = 0, captureToken = 0, inputStage = null, draft = {}, textQueue = Promise.resolve(), lastTask = '', lastReviews = '', lastSteps = '';
+    let pollTimer = 0, recordTimer = 0, recordTicker = 0, startCountdown = null, captureToken = 0, inputStage = null, draft = {}, textQueue = Promise.resolve(), lastTask = '', lastReviews = '', lastSteps = '';
     const owner = window.TrainerDrafts && TrainerDrafts.profile(), base = `/api/sessions/${enc(session.id)}/lesson`;
     const live = () => !disposed && ctx.alive() && (!window.TrainerDrafts || owner === TrainerDrafts.profile());
     const lesson = () => session.lesson || {};
@@ -114,7 +114,20 @@ window.TrainerLessons = (() => {
     const vinyl = window.TrainerSoloveyVinyl?.control ? TrainerSoloveyVinyl.control({ onStart: beginRecording, label: 'Ответить голосом' }) : null;
     const micButton = vinyl ? vinyl.el : button('Ответить голосом', beginRecording);
     if (!vinyl) micButton.prepend(icon('mic'));
-    const vinylArea = vinyl ? h('div', { class: 'solovey-recorder' }, micButton) : null;
+    const recordClock = window.TrainerDottedClock?.create({ value: '0:00', label: 'Время записи' });
+    const recordCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
+    const recordMeter = typeof levelMeter === 'function' ? levelMeter(recordCanvas) : null;
+    const vinylArea = h('div', { class: 'solovey-recorder' }, vinyl ? micButton : null, recordClock?.el, recordCanvas);
+    if (recordClock) recordClock.el.hidden = true;
+    function stopRecordVisuals() { clearTimeout(recordTicker); recordTicker = 0; recordMeter?.stop(); recordCanvas.hidden = true; if (recordClock) recordClock.el.hidden = true; }
+    function startRecordVisuals() {
+      recordCanvas.hidden = false; recordMeter?.start();
+      if (recordClock) {
+        recordClock.el.hidden = false;
+        const tick = () => { if (!live() || !recording) return; const seconds = Math.floor(recording.elapsed || 0); recordClock.setValue(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`, 'Время записи'); recordTicker = setTimeout(tick, 250); };
+        tick();
+      }
+    }
     const textComposer = h('div', { class: 'stack' }, label, input, help, h('div', { class: 'row' }, send, vinyl ? null : micButton));
     append(composer, composerBody, vinylArea, recordingBody);
 
@@ -247,14 +260,16 @@ window.TrainerLessons = (() => {
     function updateComposer() {
       if (!live()) return;
       const disabled = controlsLocked();
-      composer.hidden = !canAnswer() && !recording && !pending && !stopping;
-      composerBody.hidden = !!recording;
-      recordingBody.hidden = !recording;
+      composer.hidden = !canAnswer() && !recording && !startCountdown && !pending && !stopping;
+      composerBody.hidden = !!recording || !!startCountdown;
+      recordingBody.hidden = !recording && !startCountdown;
+      vinylArea.hidden = !recording && !startCountdown && (!canAnswer() || !!pending || stopping);
       if (vinyl) {
-        const visible = !!recording || canAnswer() && !pending && !stopping;
+        const visible = !!recording || !!startCountdown || canAnswer() && !pending && !stopping;
         vinylArea.hidden = !visible;
         vinyl.setState({ recording: !!recording, disabled: disabled || !!draft.submittedText || !canAnswer(), hidden: !visible, label: 'Ответить голосом' });
       }
+      if (startCountdown) { replace(recordingBody, startCountdown.el); return; }
       if (recording) { replace(recordingBody, h('h2', null, 'Идёт запись ответа'), h('p', { role: 'status' }, audioLimit() ? `Закончите запись, когда выразите мысль. До ${audioLimit()} секунд.` : 'Рассказывайте в своём темпе. Когда закончите, остановите запись и отправьте её.'), h('div', { class: 'row' }, button('Закончить запись', stopRecording, true), button('Отменить запись', cancelRecording))); return; }
       if (stopping) { replace(composerBody, h('p', { role: 'status' }, 'Сохраняю запись на устройстве…')); return; }
       if (pending) {
@@ -300,16 +315,23 @@ window.TrainerLessons = (() => {
         feedback.querySelectorAll('audio').forEach(audio => audio.pause());
         const stream = await mic.open(); if (!live() || token !== captureToken) { closeMic(stream); return; }
         recordStream = stream;
+        if (window.TrainerDottedClock?.countIn) {
+          const gate = startCountdown = TrainerDottedClock.countIn({ seconds: 3, valid: () => live() && token === captureToken && stage === currentStage() && canAnswer() });
+          draw(); const ready = await gate.finished;
+          if (startCountdown === gate) startCountdown = null;
+          gate.cancel();
+          if (!ready || !live() || token !== captureToken || stage !== currentStage() || !canAnswer()) { closeMic(stream); return; }
+        }
         recording = new Recorder(stream, { journal: { path: audioPath(stage), userId: session.user, context: window.TrainerDrafts && TrainerDrafts.context(), onStatus: value => { if (live() && !value.durable) { warning = value.notice; drawStatus(); } } } });
-        recording.start();
+        recording.start(); startRecordVisuals();
         const seconds = audioLimit();
         if (seconds) recordTimer = setTimeout(() => { warning = `Прошло ${seconds} секунд. Запись остановлена и ждёт отправки.`; stopRecording(); }, seconds * 1000);
-      } catch (caught) { error = caught.message; closeMic(); }
+      } catch (caught) { error = caught.message; stopRecordVisuals(); closeMic(); }
       finally { busy = false; if (live()) draw(); }
     }
     async function stopRecording() {
       if (!recording || stopping) return;
-      const recorder = recording, stage = currentStage(), recordOwner = owner; recording = null; stopping = true; clearTimeout(recordTimer); draw();
+      const recorder = recording, stage = currentStage(), recordOwner = owner; recording = null; stopping = true; clearTimeout(recordTimer); stopRecordVisuals(); draw();
       try {
         const blob = await recorder.stop(); let saved = recorder.savedDraft;
         if (!saved && window.TrainerDrafts) saved = await TrainerDrafts.audio(audioPath(stage), blob, {}, undefined, { profile: recordOwner, route: location.hash });
@@ -319,7 +341,7 @@ window.TrainerLessons = (() => {
       } catch (caught) { if (live()) error = caught.message; }
       finally { stopping = false; closeMic(); if (live()) draw(); }
     }
-    function cancelRecording() { captureToken++; clearTimeout(recordTimer); if (recording) recording.cancel(); recording = null; closeMic(); draw(); }
+    function cancelRecording() { captureToken++; startCountdown?.cancel(); startCountdown = null; stopRecordVisuals(); clearTimeout(recordTimer); if (recording) recording.cancel(); recording = null; closeMic(); draw(); }
     function clearPending() { if (!pending) return; if (pending.player) pending.player.pause(); if (pending.controls) pending.controls.pause(); URL.revokeObjectURL(pending.downloadUrl); pending = null; }
     async function discardAudio() {
       if (controlsLocked() || !pending) return;
@@ -376,7 +398,7 @@ window.TrainerLessons = (() => {
     draw(); schedule();
     window.addEventListener('beforeunload', beforeUnload); window.addEventListener('trainer:backendchange', reconnect);
     return { retentionOwner: owner, retentionSession: () => busy || stopping || recording || pending || draft.submittedText ? null : session,
-      destroy() { disposed = true; captureToken++; clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
+      destroy() { disposed = true; captureToken++; startCountdown?.cancel(); startCountdown = null; stopRecordVisuals(); recordClock?.destroy(); recordMeter?.destroy?.(); clearTimeout(pollTimer); clearTimeout(recordTimer); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); if (pending) clearPending(); feedback.querySelectorAll('audio').forEach(audio => audio.pause()); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
   }
   return { kinds, entryCards, catalog: catalogView, session: sessionView };
 })();

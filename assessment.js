@@ -28,7 +28,7 @@ window.TrainerAssessment = (() => {
     const owner = window.TrainerDrafts && TrainerDrafts.profile();
     let disposed = false, overview = null, session = null, loading = true, busy = false, stopping = false, error = '', warning = '';
     let recording = null, stream = null, pending = null, shownText = '', startedAt = 0, offset = 0, readSeconds = 0, capture = 0, timer = 0, ticker = 0, poller = 0, archived = false;
-    let questionnaire = {}, answers = {}, editing = false, timerNode = null;
+    let questionnaire = {}, answers = {}, editing = false, timerNode = null, startCountdown = null;
     const commandIds = new Map();
     const live = () => !disposed && ctx.alive() && (!window.TrainerDrafts || owner === TrainerDrafts.profile());
     const state = () => session && session.assessment || {};
@@ -41,11 +41,14 @@ window.TrainerAssessment = (() => {
     const button = (label, action, primary = false, disabled = false, data = {}) => h('button', { type: 'button', class: primary ? 'btn' : 'btn ghost', onclick: action, disabled, ...data }, label);
     const vinyl = window.TrainerSoloveyVinyl?.control ? TrainerSoloveyVinyl.control({ onStart: () => beginRecording(), label: 'Начать чтение' }) : null;
     if (vinyl) vinyl.el.setAttribute('data-assessment-begin', '');
+    const recordClock = window.TrainerDottedClock?.create({ value: '1:00', label: 'Время до конца чтения' });
+    const recordCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
+    const recordMeter = typeof levelMeter === 'function' ? levelMeter(recordCanvas) : null;
     const remaining = () => Math.max(0, Math.ceil(60 - (performance.now() - startedAt) / 1000));
     const clockText = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
     const retries = () => Number.isFinite(state().restarts_left) ? state().restarts_left : Number.isFinite(state().attempt_number) ? Math.max(0, 3 - state().attempt_number) : 2;
     const closeMic = (value = stream) => { if (value && mic.stream === value) mic.close(); if (stream === value) stream = null; };
-    function clearTimer() { clearTimeout(timer); clearTimeout(ticker); timer = 0; ticker = 0; }
+    function clearTimer() { clearTimeout(timer); clearTimeout(ticker); timer = 0; ticker = 0; recordMeter?.stop(); recordCanvas.hidden = true; }
     function clearPending() {
       if (!pending) return;
       pending.player?.pause?.(); pending.controls?.pause?.();
@@ -128,11 +131,12 @@ window.TrainerAssessment = (() => {
         button('Проверить сохранённую запись', refresh, false, locked()), h('a', { href: '#/', class: 'btn ghost' }, 'К тренировкам'));
     }
     function recordingCard() {
-      timerNode = h('strong', { class: 'assessment-countdown num', role: 'timer', 'aria-label': 'Время до конца чтения', 'data-assessment-timer': '' }, clockText(remaining()));
+      timerNode = recordClock ? recordClock.el : h('strong', { class: 'assessment-countdown num', role: 'timer', 'aria-label': 'Время до конца чтения', 'data-assessment-timer': '' }, clockText(remaining()));
+      if (recordClock) { timerNode.setAttribute('data-assessment-timer', ''); recordClock.setValue(clockText(remaining()), 'Время до конца чтения'); }
       if (vinyl) vinyl.setState({ recording: true, disabled: true, hidden: false, label: 'Чтение вслух' });
       return h('section', { class: 'card assessment-reading stack', 'data-assessment-reading': '' },
-        h('div', { class: 'assessment-reading-head' }, h('span', { class: 'assessment-recording-label' }, h('i', { 'aria-hidden': 'true' }), 'Идёт запись'), timerNode),
-        vinyl ? h('div', { class: 'solovey-recorder solovey-recorder--compact' }, vinyl.el) : null,
+        h('div', { class: 'assessment-reading-head' }, h('span', { class: 'assessment-recording-label' }, h('i', { 'aria-hidden': 'true' }), 'Идёт запись')),
+        h('div', { class: 'solovey-recorder solovey-recorder--compact' }, vinyl ? vinyl.el : null, timerNode, recordCanvas),
         h('h2', null, 'Читайте вслух'), h('div', { class: 'assessment-reading-text', tabindex: -1 }, shownText),
         button('Закончил читать', () => stopRecording(true), true, stopping || busy, { 'data-assessment-finish-reading': '' }),
         h('p', { class: 'small soft' }, 'Запись остановится сама через минуту. Можно не успеть прочитать весь текст.'));
@@ -231,7 +235,11 @@ window.TrainerAssessment = (() => {
       if (!overview) { replace(heading, h('section', { class: 'card stack' }, h('p', { role: loading ? 'status' : 'alert' }, loading ? 'Загружаю срезы…' : error), !loading ? button('Попробовать ещё раз', load) : null)); return; }
       if (!overview.questionnaire || editing) { replace(heading, drawQuestionnaire()); return; }
       let main;
-      if (recording && shownText) main = recordingCard();
+      if (startCountdown) {
+        if (vinyl) vinyl.setState({ recording: false, disabled: true, hidden: false, label: 'Начать чтение' });
+        main = h('section', { class: 'card solovey-recorder' }, vinyl ? vinyl.el : null, startCountdown.el, h('p', { class: 'small soft' }, 'Текст откроется после отсчёта.'));
+      }
+      else if (recording && shownText) main = recordingCard();
       else if (recording || busy && !session) main = h('section', { class: 'card stack', role: 'status' }, h('h2', null, 'Готовлю запись…'), h('p', null, 'Текст появится после включения микрофона.'));
       else if (stopping) main = h('section', { class: 'card', role: 'status' }, 'Сохраняю запись на устройстве…');
       else if (pending) main = pendingCard();
@@ -277,16 +285,23 @@ window.TrainerAssessment = (() => {
         if (phase() !== 'ready') throw new Error('Этот текст уже открывался. Возьмите новый текст для повторного среза.');
         const opened = await mic.open(); if (!live() || token !== capture) { closeMic(opened); return; }
         stream = opened;
+        if (window.TrainerDottedClock?.countIn) {
+          const gate = startCountdown = TrainerDottedClock.countIn({ seconds: 3, valid: () => live() && token === capture && phase() === 'ready' });
+          draw(); const ready = await gate.finished;
+          if (startCountdown === gate) startCountdown = null;
+          gate.cancel();
+          if (!ready || !live() || token !== capture || phase() !== 'ready') { closeMic(opened); return; }
+        }
         recording = new Recorder(opened, { journal: { path: audioPath(), userId: session.user, context: { profile: owner, route: '#/assessment' }, onStatus: value => { if (live() && !value.durable) { warning = value.notice; } } } });
         recording.start();
         const fresh = await command('reveal');
         if (!live() || token !== capture) { recording?.cancel({ preserve: true }); recording = null; closeMic(opened); return; }
         if (!fresh.assessment?.reading?.text) throw new Error('Текст не открылся. Проверьте связь и состояние попытки.');
         session = fresh; shownText = fresh.assessment.reading.text; startedAt = performance.now(); readSeconds = 0; busy = false; draw();
-        offset = Math.max(0, recording.elapsed || 0); startedAt = performance.now();
+        offset = Math.max(0, recording.elapsed || 0); startedAt = performance.now(); recordCanvas.hidden = false; recordMeter?.start();
         if (recording.journal?.updateHeaders) recording.journal.updateHeaders({ 'X-Reading-Offset-Seconds': String(offset) }).catch(() => {});
         timer = setTimeout(() => { warning = 'Минута прошла. Запись остановлена и ждёт отправки.'; stopRecording(false); }, 60000);
-        function tick() { if (!live() || !recording || !shownText) return; if (timerNode) timerNode.textContent = clockText(remaining()); ticker = setTimeout(tick, 250); }
+        function tick() { if (!live() || !recording || !shownText) return; if (recordClock) recordClock.setValue(clockText(remaining()), 'Время до конца чтения'); else if (timerNode) timerNode.textContent = clockText(remaining()); ticker = setTimeout(tick, 250); }
         ticker = setTimeout(tick, 250);
       } catch (caught) {
         if (recording) { await recording.cancel(); recording = null; }
@@ -410,7 +425,7 @@ window.TrainerAssessment = (() => {
     if (!live()) { if (vinyl) vinyl.destroy(); return null; }
     window.addEventListener('beforeunload', beforeUnload); window.addEventListener('trainer:backendchange', reconnect);
     return { retentionOwner: owner, retentionSession: () => locked() || pending ? null : session,
-      destroy() { disposed = true; capture++; clearTimer(); clearTimeout(poller); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); clearPending(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
+      destroy() { disposed = true; capture++; startCountdown?.cancel(); startCountdown = null; clearTimer(); recordClock?.destroy(); recordMeter?.destroy?.(); clearTimeout(poller); if (recording) recording.cancel({ preserve: true }); closeMic(); recording = null; if (vinyl) vinyl.destroy(); clearPending(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('trainer:backendchange', reconnect); } };
   }
   return { view, homeCard: overview => card('home', overview), progressCard: overview => card('progress', overview), profileCard: overview => card('profile', overview) };
 })();

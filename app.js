@@ -1027,7 +1027,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     session: null, exId, ex: null, topic: '', stage: 'idle', stageError: '', rec: null, recIndex: 0,
     forceIndex: null, pollT: 0, raf: 0, cards: new Map(), destroyed: false, editing: false,
     anKey: '', afterKey: '', waitPolls: 0, sessionsCache: null, scrolledToResult: false, prepShown: null,
-    thoughtMicBusy: false, startRequested: false, pendingTake: null, reviewing: null,
+    thoughtMicBusy: false, startRequested: false, pendingTake: null, reviewing: null, captureToken: 0,
   };
   const [state, sess] = await Promise.all([api('/api/state'), sid ? api(`/api/sessions/${sid}`) : Promise.resolve(null)]);
   app.state = state;
@@ -1190,6 +1190,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const stageSub = h('div', { class: 'stage-sub' });
   const stageActions = h('div', { class: 'stage-actions' });
   const canvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true' });
+  const prepClock = window.TrainerDottedClock?.create({ value: '3', label: 'До начала записи', mode: 'countdown' });
+  const recordClock = window.TrainerDottedClock?.create({ value: '0:00', label: 'Время записи', mode: 'timer' });
   const vinyl = window.TrainerSoloveyVinyl ? TrainerSoloveyVinyl.create() : null;
   const vinylButton = vinyl ? h('button', { class: 'vinyl-trigger', type: 'button', hidden: true, 'aria-label': 'Запись', onclick: startTake },
     vinyl.el, h('span', { class: 'vinyl-trigger-label', 'aria-hidden': 'true' }, 'Запись')) : null;
@@ -1222,15 +1224,17 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const vinylReady = !!vinylButton && ['idle', 'between', 'error'].includes(v.stage)
       && idx != null && !v.pendingTake && !isDemoSession(v.session);
     if (vinylButton) {
-      vinylButton.hidden = !(vinylReady || v.stage === 'rec');
+      vinylButton.hidden = !(vinylReady || v.stage === 'rec' || v.stage === 'prep');
       vinylButton.disabled = !vinylReady || v.thoughtMicBusy || v.startRequested;
       vinylButton.setAttribute('aria-label', v.stage === 'rec' ? 'Идёт запись' : 'Запись');
     }
     stage.dataset.vinylVisible = String(!!vinylButton && !vinylButton.hidden);
 
     if (v.stage === 'prep') {
-      center.append(h('div', null, h('div', { class: 'big-count' }, String(v.prepShown || '')), h('div', { class: 'stage-sub' }, 'готовьтесь')));
-      stageTitle.textContent = label;
+      if (prepClock) { prepClock.setValue(String(v.prepShown || 3)); stageTitle.append(prepClock.el); }
+      else center.append(h('div', null, h('div', { class: 'big-count' }, String(v.prepShown || '')), h('div', { class: 'stage-sub' }, 'готовьтесь')));
+      if (!prepClock) stageTitle.textContent = label;
+      stageSub.textContent = 'Запись начнётся после отсчёта';
       stageActions.append(h('button', { class: 'btn ghost small', type: 'button', onclick: cancelPrep }, 'Отмена'));
       return;
     }
@@ -1238,12 +1242,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       setRing(0);
       center.append(h('div', { class: 'pulse' }, icon('speaker', 'big-ico')));
       stageTitle.textContent = 'Тренер задаёт вопрос…';
-      stageSub.append('Запись начнётся сразу после вопроса. ', h('span', { class: 'kbd' }, 'Пробел'), ' — начать сейчас');
+      stageSub.append('После вопроса — три секунды на подготовку. ', h('span', { class: 'kbd' }, 'Пробел'), ' — пропустить озвучку');
       return;
     }
     if (v.stage === 'rec') {
       const lim = currentLimit();
-      v.timeEl = h('div', { class: 'big-time' }, lim ? String(lim) : '0:00');
+      v.timeEl = recordClock ? recordClock.el : h('div', { class: 'big-time' }, lim ? String(lim) : '0:00');
+      if (recordClock) recordClock.setValue(lim ? String(Math.max(0, Math.ceil(lim - (v.rec?.elapsed || 0)))) : mmss(v.rec?.elapsed || 0), lim ? 'Секунд осталось' : 'Время записи');
       const stopBtn = h('button', { class: vinyl ? 'btn record-stop' : 'rec-btn stop', type: 'button', 'aria-label': 'Остановить запись', onclick: finishTake },
         h('span', { class: 'sq', 'aria-hidden': 'true' }), vinyl ? 'Остановить запись' : null);
       if (vinyl) stageActions.append(stopBtn); else center.append(stopBtn);
@@ -1301,7 +1306,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       center.append(btn);
     }
     stageTitle.textContent = isFree ? 'Запись' : (label || 'Запись');
-    stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), v.ex.prep ? ` — старт, ${v.ex.prep} с на подготовку` : ' — старт');
+    stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), ` — старт, ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
     if (v.stage === 'between' && v.session) {
       const prev = v.session.takes.filter((t) => t.status !== 'missing').length - 1;
       if (prev >= 0) stageActions.append(h('button', { class: 'btn ghost small', type: 'button', onclick: () => rerecord(prev) }, icon('redo'), 'Перезаписать прошлую'));
@@ -1339,6 +1344,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (busy() || v.startRequested || v.destroyed) return;
     const idx = nextIndex();
     if (idx == null) return;
+    const token = ++v.captureToken;
     v.startRequested = true;
     if (vinylButton) vinylButton.disabled = true;
     try {
@@ -1351,29 +1357,35 @@ async function ExerciseView(ctx, { exId, sid, params }) {
         renderStage();
         return;
       }
-      if (v.destroyed) { mic.close(); return; }
+      if (!recordStartCurrent(token)) { if (token === v.captureToken) mic.close(); return; }
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      if (!(await ensureSession()) || v.destroyed) return;
+      if (!(await ensureSession()) || !recordStartCurrent(token)) { if (token === v.captureToken) mic.close(); return; }
       v.recIndex = idx;
       renderStepper();
       if (v.exId === 'coach' && prefs.get('readQuestion', true)) {
         v.stage = 'asking';
         renderStage();
         meter.start();
-        const spoke = speak(v.topic, () => { if (v.stage === 'asking') beginRecording(); });
-        if (!spoke) beginRecording();
+        const spoke = speak(v.topic, () => { if (v.stage === 'asking') runPrep(3); });
+        if (!spoke) runPrep(3);
         return;
       }
-      const prep = v.ex.prep || 0;
-      if (prep > 0) runPrep(prep);
-      else beginRecording();
+      runPrep(Math.max(3, v.ex.prep || 0));
     } finally {
-      v.startRequested = false;
-      if (vinylButton) vinylButton.disabled = v.destroyed || busy();
+      if (token === v.captureToken) {
+        v.startRequested = false;
+        if (vinylButton) vinylButton.disabled = v.destroyed || busy();
+      }
     }
   }
 
+  function recordStartCurrent(token) {
+    return !v.destroyed && ctx.alive() && token === v.captureToken && !document.hidden
+      && (!retentionOwner || !window.TrainerDrafts || retentionOwner === TrainerDrafts.profile());
+  }
+
   function runPrep(sec) {
+    const token = v.captureToken;
     v.stage = 'prep';
     v.prepShown = sec;
     renderStage();
@@ -1381,13 +1393,14 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const t0 = performance.now();
     const step = (now) => {
       if (v.stage !== 'prep') return;
+      if (!recordStartCurrent(token)) { cancelPrep(); return; }
       const el = (now - t0) / 1000;
       setRing(el / sec);
       const n = Math.ceil(sec - el);
       if (n !== v.prepShown && n > 0) {
         v.prepShown = n;
-        const big = center.querySelector('.big-count');
-        if (big) big.textContent = String(n);
+        if (prepClock) prepClock.setValue(String(n));
+        else { const big = center.querySelector('.big-count'); if (big) big.textContent = String(n); }
         sound.beep(520, 0.05, 0.07);
       }
       if (el >= sec) { beginRecording(); return; }
@@ -1398,10 +1411,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   }
 
   function cancelPrep() {
-    if (v.stage !== 'prep' && v.stage !== 'asking') return;
+    if (!['prep', 'asking', 'starting'].includes(v.stage)) return;
+    v.captureToken++;
+    v.startRequested = false;
     cancelAnimationFrame(v.raf);
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     meter.stop();
+    mic.close();
     v.forceIndex = null;  // отменили перезапись — возвращаемся к обычному порядку
     if (nextIndex() == null) v.stage = 'complete';
     else v.stage = v.session && v.session.takes.some((t) => t.status !== 'missing') ? 'between' : 'idle';
@@ -1411,12 +1427,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   async function beginRecording() {
     if (v.destroyed || !['prep', 'asking', 'idle', 'between', 'complete', 'error'].includes(v.stage)) return;
+    const token = v.captureToken;
     if (window.speechSynthesis) window.speechSynthesis.cancel();
     cancelAnimationFrame(v.raf);
     v.stage = 'starting';
     await sound.beep(880, 0.14);
     await wait(130); // сигнал не должен попасть в запись
-    if (v.destroyed) return;
+    if (!recordStartCurrent(token) || v.stage !== 'starting') { if (token === v.captureToken) cancelPrep(); return; }
     try {
       v.recordingContext = window.TrainerDrafts && TrainerDrafts.context();
       v.recordingStream = mic.stream;
@@ -1452,12 +1469,14 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (lim) {
       const left = Math.max(0, lim - el);
       setRing(left / lim);
-      if (v.timeEl) v.timeEl.textContent = String(Math.ceil(left));
+      if (recordClock) recordClock.setValue(String(Math.ceil(left)));
+      else if (v.timeEl) v.timeEl.textContent = String(Math.ceil(left));
       stage.classList.toggle('ending', left <= 5);
       if (left <= 0) { finishTake(); return; }
     } else {
       setRing((el % 60) / 60);
-      if (v.timeEl) v.timeEl.textContent = mmss(el);
+      if (recordClock) recordClock.setValue(mmss(el));
+      else if (v.timeEl) v.timeEl.textContent = mmss(el);
       if (el >= 20 * 60) { finishTake(); return; }
     }
     v.raf = requestAnimationFrame(tick);
@@ -2055,7 +2074,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (e.code === 'Space') {
       e.preventDefault();
       if (v.stage === 'rec') finishTake();
-      else if (v.stage === 'asking') beginRecording();
+      else if (v.stage === 'asking') { if (window.speechSynthesis) window.speechSynthesis.cancel(); runPrep(3); }
       else if (v.stage === 'prep') return;
       else startTake();
     } else if (e.key === 'Escape') {
@@ -2063,6 +2082,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
   }
   document.addEventListener('keydown', onKey);
+  const onRecordVisibility = () => { if (document.hidden) cancelPrep(); };
+  document.addEventListener('visibilitychange', onRecordVisibility);
   function onAudioSent(event) {
     const pending = v.pendingTake, sent = event.detail || {};
     if (!pending || pending.sending || v.destroyed || sent.requestId !== pending.requestId || sent.profile !== pending.profile) return;
@@ -2097,10 +2118,12 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
     if (nextResize) nextResize.disconnect();
     if (vinyl) vinyl.destroy();
+    prepClock?.destroy(); recordClock?.destroy();
     if (meter.destroy) meter.destroy(); else meter.stop();
     thoughts.destroy();
     if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('visibilitychange', onRecordVisibility);
     window.removeEventListener('trainer:audiosent', onAudioSent);
     window.removeEventListener('trainer:backendchange', onConnectionRestored);
     window.removeEventListener('trainer:connectionrestored', onConnectionRestored);
@@ -2130,11 +2153,13 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       if (v.rec) v.rec.cancel({ preserve: true });
       thoughts.destroy();
       if (vinyl) vinyl.destroy();
+      prepClock?.destroy(); recordClock?.destroy();
       if (meter.destroy) meter.destroy(); else meter.stop();
       mic.close();
       if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
       v.cards.forEach((c) => c.destroy());
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('visibilitychange', onRecordVisibility);
       window.removeEventListener('trainer:audiosent', onAudioSent);
       window.removeEventListener('trainer:backendchange', onConnectionRestored);
       window.removeEventListener('trainer:connectionrestored', onConnectionRestored);
@@ -2207,7 +2232,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
   }
 
   function makeCard(initial) {
-    let p = initial, sending = false, mode = initial.imagination ? 'voice' : 'text', rec = null, recordTimer = 0, captureToken = 0, discardToken = 0, recordingContext = null, blob = null, previewUrl = '', contentKey = '';
+    let p = initial, sending = false, mode = initial.imagination ? 'voice' : 'text', rec = null, recordTimer = 0, captureToken = 0, discardToken = 0, recordingContext = null, blob = null, previewUrl = '', contentKey = '', voiceCountdown = null;
     let voiceDraft = null, voiceRecovery = null, stoppingVoice = null, preparingVoice = false, restoreVersion = 0;
     const card = h('article', { class: 'card thought-card', id: `thought-${p.id}` });
     const title = h('h3', { tabindex: -1 });
@@ -2244,6 +2269,10 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     const answerFormat = h('div', { class: 'learning-answer-format', id: `thought-format-${p.id}`, hidden: true });
     const textBox = h('div', { class: 'field' }, answerLabel, answer, submit);
     const recordStatus = h('span', { class: 'num', role: 'status' });
+    const voiceClock = window.TrainerDottedClock?.create({ value: '0:00', label: 'Время записи' });
+    const countInArea = h('div', { class: 'record-count-in-area', hidden: true });
+    const voiceCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
+    const voiceMeter = levelMeter(voiceCanvas);
     const voiceVinyl = window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control ? TrainerSoloveyVinyl.control({ onStart: beginVoice }) : null;
     const recordButton = voiceVinyl ? voiceVinyl.el : h('button', { class: 'btn ghost', type: 'button', onclick: beginVoice }, icon('mic'), 'Начать запись');
     const stopButton = h('button', { class: 'btn', type: 'button', hidden: true, onclick: finishVoice }, icon('pause'), 'Закончить запись');
@@ -2253,7 +2282,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
     const voiceRestore = h('div', { class: 'callout', hidden: true, 'aria-live': 'polite' });
     const voiceInstruction = h('p', { class: 'small soft' }, 'Произнесите новую версию. До 90 секунд: закончите запись, когда выразили мысль.');
     const voiceBox = h('div', { class: 'thought-voice' + (voiceVinyl ? ' solovey-recorder' : ''), hidden: true },
-      voiceInstruction, voiceVinyl ? recordButton : null,
+      voiceInstruction, voiceVinyl ? recordButton : null, countInArea, voiceClock?.el, voiceCanvas,
       h('div', { class: 'row' }, voiceVinyl ? null : recordButton, stopButton, cancelButton, recordStatus), preview, sendAudio);
     const form = h('form', { class: 'thought-form', onsubmit: submitText },
       answerFormat,
@@ -2327,6 +2356,8 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       if (creative && !creative.ready()) return;
       if (!canRecord()) { err.textContent = 'Сначала закончите текущую запись упражнения.'; err.hidden = false; return; }
       const token = ++captureToken;
+      const startContext = window.TrainerDrafts && TrainerDrafts.context();
+      const sameProfile = () => !startContext || !window.TrainerDrafts || startContext.profile === TrainerDrafts.profile();
       restoreVersion++;
       voiceRestore.hidden = true;
       active = controller;
@@ -2336,11 +2367,20 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       try {
         if (creative) creative.beforeVoice();
         await mic.open();
-        if (!live() || token !== captureToken) { if (active === controller) releaseMic(); return; }
+        if (!live() || token !== captureToken || !sameProfile()) { if (active === controller) releaseMic(); return; }
+        if (window.TrainerDottedClock) {
+          const gate = voiceCountdown = TrainerDottedClock.countIn({ valid: () => live() && token === captureToken && active === controller && sameProfile() });
+          countInArea.replaceChildren(gate.el); countInArea.hidden = false;
+          recordStatus.textContent = '';
+          const ready = await gate.finished;
+          gate.cancel();
+          if (voiceCountdown === gate) { voiceCountdown = null; countInArea.replaceChildren(); countInArea.hidden = true; }
+          if (!ready || !live() || token !== captureToken || !sameProfile()) { if (active === controller) releaseMic(); if (live()) refreshControls(); return; }
+        }
         // Новая попытка не удаляет сохранённую копию предыдущей.
         clearPreview();
         discardToken++;
-        recordingContext = window.TrainerDrafts ? { ...TrainerDrafts.context(), path: path(`/thoughts/${p.id}/audio`) } : null;
+        recordingContext = startContext ? { ...startContext, path: path(`/thoughts/${p.id}/audio`) } : null;
         rec = new Recorder(mic.stream, { journal: {
           path: path(`/thoughts/${p.id}/audio`), userId: app.state && app.state.user_id, context: recordingContext,
           onStatus: (state) => {
@@ -2350,10 +2390,12 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
           },
         } });
         rec.start();
-        recordStatus.textContent = 'Запись · 0:00';
+        recordStatus.textContent = voiceClock ? 'Идёт запись' : 'Запись · 0:00';
+        voiceClock?.setValue('0:00');
         recordTimer = setInterval(() => {
           if (!rec) return;
-          recordStatus.textContent = `Запись · ${mmss(rec.elapsed)}`;
+          if (voiceClock) voiceClock.setValue(mmss(rec.elapsed));
+          else recordStatus.textContent = `Запись · ${mmss(rec.elapsed)}`;
           if (creative) creative.tick(rec.elapsed);
           if (rec.elapsed >= 90) finishVoice();
         }, 250);
@@ -2369,6 +2411,9 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
 
     function releaseMic() {
       clearInterval(recordTimer);
+      if (voiceCountdown) { voiceCountdown.cancel(); voiceCountdown = null; }
+      countInArea.replaceChildren(); countInArea.hidden = true;
+      voiceMeter.stop();
       if (active === controller) { active = null; mic.close(); recordingChanged(false); }
       recordStatus.textContent = '';
     }
@@ -2541,11 +2586,14 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       voiceButton.setAttribute('aria-pressed', String(mode === 'voice'));
       textBox.hidden = mode !== 'text';
       voiceBox.hidden = mode !== 'voice';
+      if (voiceClock) voiceClock.el.hidden = !rec;
+      voiceCanvas.hidden = !rec;
+      if (rec) voiceMeter.start(); else voiceMeter.stop();
       recordButton.hidden = voiceVinyl ? false : recording;
       recordButton.disabled = blocked;
       if (!voiceVinyl) recordButton.replaceChildren(icon('mic'), blob ? 'Записать заново' : 'Начать запись');
       stopButton.hidden = !recording || !rec;
-      cancelButton.hidden = !recording && !blob;
+      cancelButton.hidden = !!voiceCountdown || (!recording && !blob);
       cancelButton.disabled = sending || preparingVoice;
       sendAudio.hidden = !blob || !!voiceRecovery;
       sendAudio.disabled = blocked || !blob || blob.size < 1200;
@@ -2687,7 +2735,7 @@ function thoughtWorkshop({ session, alive, canRecord, recordingChanged, changed 
       controls();
     }
     function latestReviewForCreative() { return (p.attempts || []).some(a => a.status === 'done'); }
-    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); if (voiceVinyl) voiceVinyl.destroy(); if (creative) creative.destroy(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
+    const controller = { el: card, update, controls, focus: () => title.focus({ preventScroll: true }), destroy() { cancelVoice(false); clearPreview(); voiceClock?.destroy(); if (voiceMeter.destroy) voiceMeter.destroy(); else voiceMeter.stop(); if (voiceVinyl) voiceVinyl.destroy(); if (creative) creative.destroy(); card.querySelectorAll('audio').forEach((a) => a.pause()); } };
     update(initial);
     restoreVoiceDraft();
     return controller;

@@ -82,14 +82,19 @@ window.TrainerDuels = (() => {
     let recordControl = null, recordMatchId = null;
     const hasVinyl = !!(window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control);
     const recordTitle = h('h2'), recordTopic = h('p', { class: 'duel-topic' }), recordMount = h('div'), recordCaption = h('p', { class: 'small soft' });
-    const recordClock = h('div', { class: 'duel-clock num', role: 'timer', 'aria-label': 'Время поединка', hidden: true });
+    const dottedClock = window.TrainerDottedClock?.create({ value: '60', label: 'Секунд до конца поединка' });
+    const recordClock = dottedClock ? dottedClock.el : h('div', { class: 'duel-clock num', role: 'timer', 'aria-label': 'Время поединка', hidden: true });
+    recordClock.hidden = true;
+    const recordCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
+    const recordMeter = typeof levelMeter === 'function' ? levelMeter(recordCanvas) : null;
     const recordPanel = hasVinyl ? h('section', { class: 'card solovey-recorder', hidden: true, 'aria-label': 'Запись поединка' },
-      recordTitle, recordTopic, recordMount, recordClock, recordCaption) : null;
+      recordTitle, recordTopic, recordMount, recordClock, recordCaption, recordCanvas) : null;
     const root = h('section', { class: 'duels-view stack' }, intro, recordPanel, contents);
     const alive = () => !destroyed && ctx.alive();
     const now = () => serverMs + performance.now() - clockAt;
     const setClock = (stamp) => { const value = Date.parse(stamp); if (Number.isFinite(value)) { serverMs = value; clockAt = performance.now(); } };
     const closeOwnMic = () => {
+      recordMeter?.stop(); recordCanvas.hidden = true;
       const streams = new Set([armedStream, recordingStream].filter(Boolean));
       for (const stream of streams) {
         if (mic.stream === stream) mic.close();
@@ -201,6 +206,7 @@ window.TrainerDuels = (() => {
       recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически' : canResume ? 'Включить микрофон и продолжить' : armed ? 'Готов · ждём общего старта' : 'Готов · проверить микрофон';
       recordClock.hidden = !(['countdown', 'live'].includes(match.status) || actualRecording);
       recordClock.dataset.duelClock = match.id;
+      recordCanvas.hidden = !actualRecording;
     }
     function selectRecording(match) {
       focus = match.id; draw();
@@ -380,7 +386,10 @@ window.TrainerDuels = (() => {
         const match = data && data.matches.find((item) => item.id === node.dataset.duelClock);
         if (!match) return;
         const start = Date.parse(match.start_at), end = Date.parse(match.end_at);
-        node.textContent = now() < start ? `Старт через ${Math.max(0, Math.ceil((start - now()) / 1000))}` : `${Math.max(0, Math.ceil((end - now()) / 1000))} с`;
+        if (node === recordClock && dottedClock) {
+          const before = now() < start;
+          dottedClock.setValue(String(Math.max(0, Math.ceil(((before ? start : end) - now()) / 1000))), before ? 'Секунд до общего старта' : 'Секунд до конца поединка');
+        } else node.textContent = now() < start ? `Старт через ${Math.max(0, Math.ceil((start - now()) / 1000))}` : `${Math.max(0, Math.ceil((end - now()) / 1000))} с`;
       });
       const match = data && data.matches.find((item) => item.id === armedId);
       if (match && !demonstration(match) && !recording && !starting && !session && now() >= Date.parse(match.start_at) && now() < Date.parse(match.end_at)) startRecording(match);
@@ -399,7 +408,7 @@ window.TrainerDuels = (() => {
         rec = new Recorder(mic.stream, { journal: {
           path: `/api/sessions/${session.id}/takes/0`, userId: (own(match) || {}).id, context: recordingContext,
           headers: { 'X-Duel-Nonce': session.duel_nonce },
-        } }); rec.start(); recording = true;
+        } }); rec.start(); recording = true; recordCanvas.hidden = false; recordMeter?.start();
         const actual = data.matches.find((item) => item.id === match.id);
         if (actual) { actual.topic = session.topic; actual.status = 'live'; }
       } catch (caught) { error = caught.message; closeOwnMic(); }
@@ -407,7 +416,7 @@ window.TrainerDuels = (() => {
     }
     async function finishRecording() {
       if (!recording || !rec) return;
-      recording = false;
+      recording = false; recordMeter?.stop(); recordCanvas.hidden = true;
       if (recordControl) recordControl.setState({ recording: false, disabled: true });
       const stopped = rec, recordedSession = session, context = recordingContext; rec = null;
       const headers = { 'X-Duel-Nonce': recordedSession.duel_nonce };
@@ -439,6 +448,7 @@ window.TrainerDuels = (() => {
       destroy() {
       destroyed = true; clearTimeout(pollTimer); clearInterval(ticker); window.removeEventListener('beforeunload', beforeUnload);
       if (recordControl) recordControl.destroy();
+      dottedClock?.destroy(); recordMeter?.stop(); recordMeter?.destroy?.();
       root.querySelectorAll('audio').forEach((audio) => audio.pause());
       if (recording && rec) finishRecording();
       else if (!starting) closeOwnMic();

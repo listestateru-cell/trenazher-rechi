@@ -198,7 +198,7 @@ window.TrainerConversations = (() => {
 
   async function sessionView(ctx, initial) {
     let session = initial, destroyed = false, busy = false, loading = false, error = '', pollTimer = 0, pendingChecks = 0;
-    let recorder = null, stopping = null, openingMic = false, recordStream = null, recordContext = null, startToken = 0, pending = null, recordWarning = '';
+    let recorder = null, stopping = null, openingMic = false, recordStream = null, recordContext = null, startToken = 0, pending = null, recordWarning = '', startCountdown = null, recordTicker = 0;
     let allowAutoVoice = autoVoiceSessions.delete(session.id), lastMessages = '', lastReview = '';
     let autoVoiceEnabled = !!(window.TrainerDrafts && (TrainerDrafts.getText('conversation:settings') || {}).auto_voice);
     let textIndex = null, textPending = null, textSending = false, textSaveQueue = Promise.resolve(), textRevision = 0, showingTextComposer = false, sessionVersion = 0, audioCopiesKey = '';
@@ -230,7 +230,20 @@ window.TrainerConversations = (() => {
     const micButton = voiceControl ? voiceControl.el : button('Ответить голосом', beginRecording);
     if (!voiceControl) micButton.prepend(icon('mic'));
     micButton.setAttribute('aria-label', 'Ответить голосом');
-    const voicePanel = voiceControl ? h('div', { class: 'solovey-recorder', hidden: true }, micButton, h('p', { class: 'small soft' }, 'Запись')) : null;
+    const recordClock = window.TrainerDottedClock?.create({ value: '0:00', label: 'Время записи' });
+    const recordCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
+    const recordMeter = typeof levelMeter === 'function' ? levelMeter(recordCanvas) : null;
+    const voicePanel = h('div', { class: 'solovey-recorder', hidden: true }, voiceControl ? micButton : null, recordClock?.el, recordCanvas);
+    if (recordClock) recordClock.el.hidden = true;
+    function stopRecordVisuals() { clearTimeout(recordTicker); recordTicker = 0; recordMeter?.stop(); recordCanvas.hidden = true; if (recordClock) recordClock.el.hidden = true; }
+    function startRecordVisuals() {
+      recordCanvas.hidden = false; recordMeter?.start();
+      if (recordClock) {
+        recordClock.el.hidden = false;
+        const tick = () => { if (!live() || !recorder) return; const seconds = Math.floor(recorder.elapsed || 0); recordClock.setValue(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`, 'Время записи'); recordTicker = setTimeout(tick, 250); };
+        tick();
+      }
+    }
     const composerContent = h('div', { class: 'stack' });
     // Пластинка остаётся в DOM: обновления диалога не перезапускают её вращение.
     composer.append(voicePanel, composerContent);
@@ -403,6 +416,7 @@ window.TrainerConversations = (() => {
       }));
     }
     function stageText() {
+      if (startCountdown) return 'Подготовьтесь ответить голосом.';
       if (recorder) return 'Идёт запись вашего ответа. Закончите, когда выразите мысль.';
       if (stopping) return 'Сохраняю запись на устройстве…';
       if (pending && pending.sending) return 'Отправляю ваш ответ…';
@@ -498,13 +512,15 @@ window.TrainerConversations = (() => {
     function drawComposer() {
       const phase = conversation(session).phase, locked = busy || !!stopping || textSending;
       if (voiceControl) {
-        voicePanel.hidden = !recorder;
-        voiceControl.setState({ recording: !!recorder, disabled: locked || openingMic, hidden: !recorder, label: 'Ответить голосом' });
+        voicePanel.hidden = !recorder && !startCountdown;
+        voiceControl.setState({ recording: !!recorder, disabled: locked || openingMic, hidden: !recorder && !startCountdown, label: 'Ответить голосом' });
       }
       const currentError = phase === 'awaiting_user' && ((session.takes || [])[conversation(session).active_take ?? currentIndex(session)] || {}).status === 'error';
-      const wantsText = !recorder && !stopping && !pending && (phase === 'awaiting_user' || !!textPending) && !currentError && (session.analysis || {}).status !== 'error';
+      voicePanel.hidden = !recorder && !startCountdown;
+      const wantsText = !startCountdown && !recorder && !stopping && !pending && (phase === 'awaiting_user' || !!textPending) && !currentError && (session.analysis || {}).status !== 'error';
       if (wantsText && showingTextComposer) { updateTextComposer(locked); return; }
       composerContent.replaceChildren(); composer.hidden = false; showingTextComposer = false;
+      if (startCountdown) { composerContent.append(startCountdown.el); return; }
       if (recorder) {
         composerContent.append(h('h2', null, 'Ваш ответ'), h('p', { class: 'conversation-recording', role: 'status' }, icon('mic'), 'Идёт запись'),
           h('div', { class: 'row' }, button('Закончить и отправить', stopRecording, true), button('Отменить запись', cancelRecording), button('Написать вместо записи', () => stopRecording({ send: false }))));
@@ -620,17 +636,24 @@ window.TrainerConversations = (() => {
         const stream = await mic.open();
         if (!live() || token !== startToken || conversation(session).phase !== 'awaiting_user') { if (mic.stream === stream) mic.close(); return; }
         recordStream = stream;
+        if (window.TrainerDottedClock?.countIn) {
+          const gate = startCountdown = TrainerDottedClock.countIn({ seconds: 3, valid: () => live() && token === startToken && conversation(session).phase === 'awaiting_user' });
+          draw(); const ready = await gate.finished;
+          if (startCountdown === gate) startCountdown = null;
+          gate.cancel();
+          if (!ready || !live() || token !== startToken || conversation(session).phase !== 'awaiting_user') { closeMic(); return; }
+        }
         recordContext = window.TrainerDrafts && TrainerDrafts.context();
         recorder = new Recorder(recordStream, { journal: { path: takePath(index), userId: session.user ?? (app.state && app.state.user_id), context: recordContext,
           onStatus: status => { if (!status.durable && status.notice && status.notice !== recordWarning && live()) { recordWarning = status.notice; draw(); } } } });
-        recorder.start();
-      } catch (caught) { error = caught.message; if (recorder) recorder.cancel({ preserve: true }); recorder = null; closeMic(); }
+        recorder.start(); startRecordVisuals();
+      } catch (caught) { error = caught.message; if (recorder) recorder.cancel({ preserve: true }); recorder = null; stopRecordVisuals(); closeMic(); }
       finally { busy = false; openingMic = false; draw(); }
     }
     async function stopRecording({ send = true } = {}) {
       if (!recorder || stopping) return;
       const stopped = recorder, index = currentIndex(session), context = recordContext;
-      recorder = null; stopping = stopped; draw();
+      recorder = null; stopping = stopped; stopRecordVisuals(); draw();
       try {
         const recorded = await stopped.stop();
         let saved = stopped.savedDraft;
@@ -644,7 +667,7 @@ window.TrainerConversations = (() => {
       if (live() && pending) { if (!send) chooseText(); else if (pending.blob.size >= 1200) await sendAnswer(); }
     }
     function cancelRecording() {
-      startToken++;
+      startToken++; startCountdown?.cancel(); startCountdown = null; stopRecordVisuals();
       if (recorder) recorder.cancel();
       recorder = null; closeMic(); draw();
     }
@@ -747,7 +770,7 @@ window.TrainerConversations = (() => {
     window.addEventListener('beforeunload', beforeUnload);
     return { retentionOwner: owner, retentionSession: () => busy || loading || recorder || stopping || openingMic || pending || textPending || textSending || parkedAudio.size ? null : session,
       destroy() {
-      destroyed = true; startToken++; clearTimeout(pollTimer);
+      destroyed = true; startToken++; startCountdown?.cancel(); startCountdown = null; stopRecordVisuals(); recordClock?.destroy(); recordMeter?.destroy?.(); clearTimeout(pollTimer);
       if (voiceControl) voiceControl.destroy();
       window.removeEventListener('trainer:backendchange', onReconnect); window.removeEventListener('beforeunload', beforeUnload);
       pauseAudio();

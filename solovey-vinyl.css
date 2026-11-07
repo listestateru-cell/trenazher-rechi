@@ -1,0 +1,169 @@
+@font-face {
+  font-family: 'Solovey Script';
+  src: url('fonts/solovey-script.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+/* Белый полупрозрачный карман и винил остаются материалами предмета в обеих темах. */
+.solovey-vinyl {
+  --vinyl-paper: #f5f6f2;
+  --vinyl-paper-edge: #ffffff;
+  --vinyl-paper-shade: #dce1df;
+  --vinyl-print: #202623;
+  --vinyl-black: #101311;
+  --vinyl-rim: #4c534e;
+  position: relative;
+  flex: none;
+  width: 236px;
+  max-width: 100%;
+  height: 236px;
+  margin-inline: auto;
+  isolation: isolate;
+  pointer-events: none;
+  user-select: none;
+  contain: layout style;
+}
+.solovey-vinyl > span { position: absolute; display: block; box-sizing: border-box; }
+.solovey-vinyl .solovey-vinyl-case {
+  z-index: 0;
+  inset: 12px;
+  border: 1px solid var(--vinyl-paper-edge);
+  border-radius: 39px;
+  background: linear-gradient(132deg, var(--vinyl-paper-edge), var(--vinyl-paper) 46%, var(--vinyl-paper-shade));
+  box-shadow: 0 12px 21px -13px #17221977, 0 2px 5px #25332b12,
+    inset 0 1px 2px #fff, inset 0 -3px 3px #8c969222;
+}
+.solovey-vinyl .solovey-vinyl-case::after {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: 50%;
+  background: conic-gradient(from 25deg, #e1e6e3, #fbfcfa 28%, #aeb8b2 43%, #eef1ed 56%, #c0c9c3 76%, #f6f8f4);
+  box-shadow: inset 0 0 0 1px #6d7a6e16, inset 0 0 14px #69766c22;
+}
+.solovey-vinyl .solovey-vinyl-carrier {
+  z-index: 1;
+  left: 27px;
+  top: 27px;
+  width: 182px;
+  height: 182px;
+  transform: translateY(10px);
+  transition: transform 350ms ease-out;
+  filter: drop-shadow(0 5px 4px #131c1560);
+}
+.solovey-vinyl[data-recording="true"] .solovey-vinyl-carrier { transform: translateY(-9px); }
+.solovey-vinyl .solovey-vinyl-disc {
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid var(--vinyl-rim);
+  background:
+    repeating-radial-gradient(circle at center, #ffffff00 0 1.15px, #a2aaa511 1.3px 1.7px, #00000033 1.85px 2.4px),
+    conic-gradient(from 13deg, #0b0e0c 0deg, #131915 20deg, #39403a 45deg, #121713 70deg,
+      #080b09 112deg, #2b332c 154deg, #151b16 172deg, #080b09 217deg, #3e463f 253deg,
+      #151c16 274deg, #080c09 319deg, #19221b 344deg, #0b0e0c 360deg);
+  box-shadow: inset 0 0 0 2px #0c120e, inset 0 0 0 4px #727d6b22,
+    inset 0 0 0 5px #000000, inset 0 0 0 7px #59675218;
+  animation: solovey-vinyl-turn 5.5s linear infinite;
+  animation-play-state: paused;
+}
+.solovey-vinyl[data-spinning="true"] .solovey-vinyl-disc { animation-play-state: running; }
+.solovey-vinyl .solovey-vinyl-disc::before {
+  content: '';
+  position: absolute;
+  width: 53px;
+  height: 53px;
+  left: calc(50% - 26.5px);
+  top: calc(50% - 26.5px);
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle, #ffffff00 0 2px, #ffffff66 2px 2.5px, #4a56572b 2.7px 3.1px),
+    conic-gradient(from 20deg, #cad1ca, #f5f8f0 16%, #7d8882 27%, #f3f5ee 40%, #a2ada5 54%, #e7ece3 77%, #828c84 91%, #cad1ca);
+  box-shadow: 0 0 0 4px #010702, 0 0 0 5px #77816f55;
+}
+.solovey-vinyl .solovey-vinyl-disc::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  left: calc(50% - 4px);
+  top: calc(50% - 4px);
+  border-radius: 50%;
+  background: #0b100c;
+  box-shadow: 0 0 0 1px #cbd3c7, 0 1px 3px 1px #0008;
+}
+.solovey-vinyl .solovey-vinyl-pocket {
+  z-index: 2;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  height: 105px;
+  border: 1px solid var(--vinyl-paper-edge);
+  border-radius: 13px 13px 38px 38px;
+  background:
+    radial-gradient(ellipse at 48% 2%, #b2bcb44f, #ffffff00 64%),
+    linear-gradient(135deg, #ffffffed, #f8f9f5e8 33%, #e3e9e5ee 74%, #ffffffef);
+  -webkit-mask-image: radial-gradient(ellipse 45px 24px at 50% 0, transparent 98%, #000 100%);
+  mask-image: radial-gradient(ellipse 45px 24px at 50% 0, transparent 98%, #000 100%);
+  box-shadow: inset 0 1px 0 #fff, inset 0 -3px 4px #b2beb844;
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+}
+.solovey-vinyl .solovey-vinyl-logo {
+  z-index: 3;
+  left: 28px;
+  bottom: 47px;
+  width: 129px;
+  color: var(--vinyl-print);
+  font-family: 'Solovey Script', 'Segoe Script', 'Apple Chancery', cursive;
+  font-size: 39px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.3;
+  letter-spacing: -.045em;
+  transform: rotate(-10deg);
+  text-align: left;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 #ffffff99;
+}
+.solovey-vinyl .solovey-vinyl-stamp {
+  z-index: 3;
+  right: 28px;
+  bottom: 42px;
+  width: 47px;
+  padding: 3px 2px;
+  border: 1px solid var(--vinyl-print);
+  background: #fffdf7e6;
+  box-shadow: 0 0 0 2px #f7f8f2dc;
+  color: var(--vinyl-print);
+  text-align: center;
+  font-family: var(--font, system-ui, sans-serif);
+  font-weight: 750;
+  line-height: 1.2;
+}
+.solovey-vinyl .solovey-vinyl-stamp > span { display: block; }
+.solovey-vinyl .solovey-vinyl-stamp-top { color: #fffdf7; background: var(--vinyl-print); font-size: 5px; letter-spacing: .7px; }
+.solovey-vinyl .solovey-vinyl-stamp-main { font-size: 8px; margin-block: 2px; letter-spacing: -.2px; }
+.solovey-vinyl .solovey-vinyl-stamp-bottom { font-size: 4px; letter-spacing: .65px; }
+@keyframes solovey-vinyl-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .solovey-vinyl .solovey-vinyl-carrier { transition: none; }
+  .solovey-vinyl .solovey-vinyl-disc { animation: none; }
+}
+
+/* Подключение в основной сцене: управление находится отдельно от рисунка. */
+.stage.has-solovey-vinyl > .solovey-vinyl { display: none; }
+.stage.has-solovey-vinyl[data-mode="rec"] > .solovey-vinyl { display: block; }
+.stage.has-solovey-vinyl[data-mode="rec"] > .ring-wrap { display: none; }
+.stage.has-solovey-vinyl[data-mode="rec"] .stage-actions { width: 100%; }
+.stage.has-solovey-vinyl .record-stop { min-height: 48px; width: min(100%, 280px); gap: 10px; }
+.stage.has-solovey-vinyl .record-stop .sq { width: 12px; height: 12px; flex: none; border-radius: 3px; background: currentColor; }
+.stage.has-solovey-vinyl .level.voice-light {
+  --voice-light-bg: transparent;
+  --voice-light-ink: var(--ink-2);
+  height: 44px;
+  max-width: 280px;
+  border-radius: 0;
+}

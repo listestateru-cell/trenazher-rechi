@@ -1190,8 +1190,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const stageSub = h('div', { class: 'stage-sub' });
   const stageActions = h('div', { class: 'stage-actions' });
   const canvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true' });
-  const stage = h('section', { class: 'card stage', 'aria-live': 'polite' },
-    h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, canvas, stageActions);
+  const vinyl = window.TrainerSoloveyVinyl ? TrainerSoloveyVinyl.create() : null;
+  const stage = h('section', { class: 'card stage' + (vinyl ? ' has-solovey-vinyl' : ''), 'aria-live': 'polite' },
+    vinyl ? vinyl.el : null, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
   const recordingDetails = h('details', { class: 'recording-details', open: true },
     h('summary', null, 'Запись упражнения'), stage);
   const workspace = h('div', { class: 'workspace' }, topicCard, recordingDetails);
@@ -1206,6 +1207,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   function renderStage() {
     syncReviewLayout();
     stage.dataset.mode = v.stage;
+    if (vinyl) vinyl.setRecording(v.stage === 'rec');
     stage.classList.remove('ending');
     center.replaceChildren();
     stageActions.replaceChildren();
@@ -1232,8 +1234,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (v.stage === 'rec') {
       const lim = currentLimit();
       v.timeEl = h('div', { class: 'big-time' }, lim ? String(lim) : '0:00');
-      const stopBtn = h('button', { class: 'rec-btn stop', type: 'button', 'aria-label': 'Остановить запись', onclick: finishTake }, h('span', { class: 'sq' }));
-      center.append(stopBtn);
+      const stopBtn = h('button', { class: vinyl ? 'btn record-stop' : 'rec-btn stop', type: 'button', 'aria-label': 'Остановить запись', onclick: finishTake },
+        h('span', { class: 'sq', 'aria-hidden': 'true' }), vinyl ? 'Остановить запись' : null);
+      if (vinyl) stageActions.append(stopBtn); else center.append(stopBtn);
       stageTitle.append(v.timeEl);
       stageSub.textContent = lim ? 'секунд осталось · пробел — закончить раньше' : 'идёт запись · пробел — закончить';
       if (v.backupWarning) stageActions.append(h('p', { class: 'small soft', role: 'status' }, v.backupWarning));
@@ -2072,6 +2075,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
     if (nextResize) nextResize.disconnect();
+    if (vinyl) vinyl.destroy();
     if (meter.destroy) meter.destroy(); else meter.stop();
     thoughts.destroy();
     if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);
@@ -2104,6 +2108,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       cancelAnimationFrame(v.raf);
       if (v.rec) v.rec.cancel({ preserve: true });
       thoughts.destroy();
+      if (vinyl) vinyl.destroy();
       if (meter.destroy) meter.destroy(); else meter.stop();
       mic.close();
       if (v.pendingTake) URL.revokeObjectURL(v.pendingTake.downloadUrl);

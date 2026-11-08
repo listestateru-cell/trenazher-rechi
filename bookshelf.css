@@ -87,8 +87,12 @@
 .bookshelf.is-ready .book-spine {
   transition: transform var(--book-dur) var(--book-ease), opacity calc(var(--book-dur) * .6) ease-out;
 }
-.book:not([data-open="true"]) .book-spine:hover { transform: translateY(-6px); }
-.bookshelf.is-ready .book:not([data-open="true"]) .book-spine:hover { transition-duration: 180ms; }
+/* приподнять корешок — только под мышью: на iPhone эффект наведения съедает первое касание */
+@media (hover: hover) and (pointer: fine) {
+  .book:not([data-open="true"]) .book-spine:hover { transform: translateY(-6px); }
+  .bookshelf.is-ready .book:not([data-open="true"]) .book-spine:hover { transition-duration: 180ms; }
+}
+.book-spine, .book-cover, .bookshelf-caption-back, .bookshelf-caption-start { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .book[data-open="true"] .book-spine { transform: rotateY(-90deg); opacity: 0; pointer-events: none; }
 .book-spine-title {
   writing-mode: vertical-rl;

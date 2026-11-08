@@ -1,0 +1,10 @@
+/* Логотип «СОЛО–ВЕЙ» в шапке: красная «С» с петлёй, буквы и тире-рот цветом текста.
+   Широкий экран и телефон — весь знак, самые узкие экраны — одна «С». */
+.solovey-brand { gap: 0; color: var(--ink); }
+.solovey-brand > span { align-items: center; }
+.solovey-brand .brand-name-full, .solovey-brand .brand-name-mobile { line-height: 0; }
+.solovey-brand .solovey-logo { display: block; height: 26px; width: auto; overflow: visible; }
+.solovey-brand .solovey-mark { display: block; height: 30px; width: auto; }
+@media (max-width: 767px) {
+  .solovey-brand .solovey-logo { height: 19px; }
+}

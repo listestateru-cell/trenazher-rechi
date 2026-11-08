@@ -3439,9 +3439,9 @@ async function openSettings() {
   const modelSeg = seg(models, state ? state.model : 'sonnet', async (k) => {
     try { app.state = { ...app.state, ...(await api('/api/state', { method: 'POST', body: { model: k } })) }; } catch (e) { toast(e.message); }
   });
-  const themeNow = (() => { try { const t = localStorage.getItem('tr.theme'); return ['light', 'dark', 'auto'].includes(t) ? t : 'light'; } catch (e) { return 'light'; } })();
+  const themeNow = (() => { try { const t = localStorage.getItem('tr.theme.v2'); return ['light', 'dark', 'auto'].includes(t) ? t : 'dark'; } catch (e) { return 'dark'; } })();
   const themeSeg = seg([['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']], themeNow, (k) => {
-    try { localStorage.setItem('tr.theme', k); } catch (e) { /* ничего */ }
+    try { localStorage.setItem('tr.theme.v2', k); } catch (e) { /* ничего */ }
     if (k === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = k;
   });
   const micSel = h('select', { 'aria-label': 'Микрофон' }, h('option', { value: '' }, 'Системный по умолчанию'));

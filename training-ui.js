@@ -294,8 +294,11 @@ window.TrainerTrainingUI = (() => {
       catch (_) { imaginationData = { kinds: [] }; }
       if (!ctx.alive()) return null;
     }
-    const trainingShelf = shelf({ id: 'training', title: 'Тренировки', items: trainingItems, label: 'Упражнения для речи' });
-    const learningShelf = shelf({ id: 'learning', title: 'Мысль и слово', items: [...lessonItems, ...learningItems], label: 'Задания на мысль и слово' });
+    // Полки главной — книжный шкаф с обложками (bookshelf.js); без него прежние карусели.
+    const books = !!(window.TrainerBookshelf && window.TrainerBookCovers);
+    const shelfOf = options => books ? TrainerBookshelf.mount(options) : shelf(options);
+    const trainingShelf = shelfOf({ id: 'training', title: 'Тренировки', items: trainingItems, label: 'Упражнения для речи' });
+    const learningShelf = shelfOf({ id: 'learning', title: 'Мысль и слово', items: [...lessonItems, ...learningItems], label: 'Задания на мысль и слово' });
     const imaginationSection = window.TrainerImagination ? TrainerImagination.homeSection(imaginationData) : null;
     const trend = scoreTrend(sessions);
     const progressNote = !Number.isFinite(trend.value) ? 'После первого полного разбора'
@@ -324,7 +327,8 @@ window.TrainerTrainingUI = (() => {
         h('h1', null, 'Пора потренироваться')),
       h('div', { class: 'home-bento', 'data-home-bento': '' }, today, progressCard, startCard),
       window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
-      trainingShelf, learningShelf, imaginationSection,
+      books ? h('div', { class: 'library', 'data-library': '' }, trainingShelf, learningShelf, imaginationSection)
+        : [trainingShelf, learningShelf, imaginationSection],
       h('aside', { class: 'glass-home-install' },
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));
     render(ctx, root);

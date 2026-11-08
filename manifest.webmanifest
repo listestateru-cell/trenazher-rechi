@@ -1,14 +1,14 @@
 {
   "id": "https://listestateru-cell.github.io/trenazher-rechi/",
-  "name": "Тренажёр для речи",
-  "short_name": "Тренажёр речи",
+  "name": "Соловей — тренажёр речи",
+  "short_name": "Соловей",
   "description": "Упражнения на ясность мысли и точность речи",
   "lang": "ru",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f5f4ef",
-  "theme_color": "#f5f4ef",
+  "background_color": "#151e19",
+  "theme_color": "#151e19",
   "icons": [
     {
       "src": "./icons/icon-192.png",

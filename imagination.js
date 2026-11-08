@@ -7,6 +7,20 @@ window.TrainerImagination = (() => {
   const mediaOf = p => (p.imagination || {}).media || null;
 
   function homeSection(data) {
+    // В книжном шкафу у каждого формата своя обложка (book-covers.js, ключ im-<формат>).
+    if (Array.isArray(data && data.kinds) && window.TrainerBookshelf && window.TrainerBookCovers) {
+      return TrainerBookshelf.mount({
+        id: 'imagination', title, label: 'Форматы воображения',
+        items: data.kinds.length ? data.kinds.map(kind => ({
+          title: kind.title, href: '#/imagination?kind=' + encodeURIComponent(kind.id),
+          icon: 'imagination', cover: 'im-' + kind.id, kicker: 'Воображение',
+          description: kind.description, meta: 'Голосом или текстом',
+        })) : [{
+          title: 'Все форматы', href: '#/imagination', icon: 'imagination', cover: 'all', kicker: 'Воображение',
+          description: 'Откройте мастерскую и выберите задание.', meta: 'Голосом или текстом',
+        }],
+      });
+    }
     if (Array.isArray(data && data.kinds) && typeof TrainerTrainingUI.shelf === 'function') {
       return TrainerTrainingUI.shelf({
         id: 'imagination', title, label: 'Форматы воображения',

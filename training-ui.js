@@ -240,6 +240,10 @@ window.TrainerTrainingUI = (() => {
   /* Главная использует те же серверные результаты и адреса, что и программа.
      Визуальная карточка не создаёт попытку и не пересчитывает баллы курса. */
   async function homeView(ctx) {
+    // Всё, что нужно главной, спрашиваем разом: раньше разговоры и мастерская шли цепочкой
+    // после состояния, и через туннель главная собиралась около 10 секунд (замер 14.11).
+    const conversationCardPromise = window.TrainerConversations ? TrainerConversations.homeCard().catch(() => null) : Promise.resolve(null);
+    const imaginationPromise = window.TrainerImagination ? api('/api/imagination').catch(() => ({ kinds: [] })) : Promise.resolve(null);
     const [state, sessions] = await Promise.all([api('/api/state'), api('/api/sessions')]);
     if (!ctx.alive()) return null;
     app.state = state;
@@ -300,7 +304,7 @@ window.TrainerTrainingUI = (() => {
         description: trainingDescriptions[id] || exercise.hint, kicker: exercise.develops, meta: durLabel(exercise),
         badge: last && Number.isFinite(last.summary.overall) ? f1(last.summary.overall) : null };
     });
-    const conversationCard = window.TrainerConversations ? await TrainerConversations.homeCard() : null;
+    const conversationCard = await conversationCardPromise;
     if (!ctx.alive()) return null;
     if (conversationCard) trainingItems.push({ title: 'Сложный разговор', href: '#/conversation', icon: 'conversation',
       description: 'Потренируйте ответ в сложной ситуации.', kicker: 'Диалог', meta: 'Голосом или текстом' });
@@ -316,12 +320,8 @@ window.TrainerTrainingUI = (() => {
       href: `#/learn/${kind.id}`, icon: kind.id, description: learningDescriptions[kind.id] || kind.description,
       kicker: 'Мысль и слово', meta: 'Голосом или текстом' }));
     learningItems.push({ title: 'Все задания', href: '#/learn', icon: 'all', description: 'Полный набор заданий на мысль, слова и пересказ.', meta: 'Открыть каталог' });
-    let imaginationData = null;
-    if (window.TrainerImagination) {
-      try { imaginationData = await api('/api/imagination'); }
-      catch (_) { imaginationData = { kinds: [] }; }
-      if (!ctx.alive()) return null;
-    }
+    const imaginationData = await imaginationPromise;
+    if (!ctx.alive()) return null;
     // Подборки главной — ряды карточек; книжную полку владелец убрал 14.11.2026.
     const shelfOf = options => row(options);
     const trainingShelf = shelfOf({ id: 'training', title: 'Тренировки', items: trainingItems, label: 'Упражнения для речи' });

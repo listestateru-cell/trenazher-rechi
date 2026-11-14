@@ -24,7 +24,8 @@ window.TrainerConversations = (() => {
 
   async function homeCard() {
     try {
-      const data = await api('/api/conversations');
+      // Главной нужен только флаг доступности: полный список сценариев весит 138 КБ.
+      const data = await api('/api/conversations?brief=1');
       if (!data.available) return null;
       return h('a', { class: 'ex-card conversation-entry', href: href() }, h('div', { class: 'icon' }, icon('ask')),
         h('h3', null, 'Сложный разговор'), h('p', { class: 'soft small' }, 'Откажите, ответьте на критику или обозначьте границу. Собеседник реагирует на ваши слова.'),

@@ -263,3 +263,12 @@ a.season-week-link:focus-visible { outline: 2px solid var(--accent); outline-off
 /* Подпись «пропущен» в узком столбце среза рвалась посередине слова: делаем её мельче и без переноса. */
 .season-track-step[data-state="missed"] .season-track-score,
 .season-track-step[data-state="upcoming"] .season-track-score { font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--ink-3); }
+
+/* ---- оценка тренера за выполнение (решение владельца от 14.11): сумма и средняя под днями,
+   тихий индекс навыков у первых трёх мест ---- */
+.season-tile > p.season-grades { margin-top: -6px; color: var(--ink); font-weight: 600; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.season-skill-index { font-size: 12px; line-height: 1.2; color: var(--ink-3); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Пояснение к числу в разбивке участника — отдельной строкой, а не хвостом за числом:
+   иначе «6,3 / 10 на место не влияет» рвётся по словам в узкой ячейке. Индекс навыков — на всю ширину. */
+.season-standings .groups-participant-metrics dd > .small { display: block; margin-top: 2px; font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.season-standings .groups-participant-metrics > [data-metric="skill"] { grid-column: 1 / -1; }

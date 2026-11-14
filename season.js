@@ -23,6 +23,8 @@ window.TrainerSeason = (() => {
   const heading = (title, aside) => h('div', { class: 'groups-section-heading' }, h('h2', null, title), aside);
   const duelsRoute = (group) => `#/groups/${enc(group.id)}/duels${group.week && !group.week.current && group.week.start ? `?week=${enc(group.week.start)}` : ''}`;
   const self = (group) => list(group.leaderboard).find((person) => person.is_self && person.season) || null;
+  // Часть «Задания» в баллах недели: 2 балла за выполнение плюс оценки тренера за выполнение.
+  const taskScore = (daily) => (daily.task_points || 0) + (daily.grades || 0);
   const active = (group) => !!(group && group.season && group.season.exists && group.season.week_number);
   const upcoming = (group) => !!(group && group.season && group.season.exists && group.season.status === 'upcoming'
     && (!group.week || group.week.current));
@@ -107,8 +109,11 @@ window.TrainerSeason = (() => {
     const mine = own.season, daily = mine.daily, fights = mine.battles;
     const steps = list(policy.full_day_bonus), battle = policy.battle || {};
     const total = list(group.leaderboard).length;
+    // Задание приносит 2 балла за выполнение и сверху оценку тренера 1–10 (решение владельца от 14.11).
+    const taskCount = list(group.daily).reduce((sum, item) => sum + (list(item.tasks).length || 5), 0) || 35;
+    const taskValue = taskScore(daily), grades = daily.grades || 0;
     // Три кольца недели, как в «Фитнесе»: у каждой части свой потолок, а не общий максимум.
-    const taskLimit = (policy.task || 2) * (list(group.daily).reduce((sum, item) => sum + (list(item.tasks).length || 5), 0) || 35);
+    const taskLimit = ((policy.task ?? 2) + (policy.grade_max ?? 10)) * taskCount;
     const bonusLimit = steps.reduce((best, step) => Math.max(best, step.bonus || 0), 0) || 30;
     const battleLimit = (battle.win || 10) * Math.max(1, total - 1);
     const ringShare = (value, limit) => Math.round(Math.max(0, Math.min(1, limit > 0 ? (value || 0) / limit : 0)) * 1000) / 10;
@@ -119,19 +124,22 @@ window.TrainerSeason = (() => {
         h('span', { class: 'small soft' }, own.rank ? `Место ${whole(own.rank)} из ${whole(total)}` : 'Место пока не определено')),
       h('div', { class: 'season-summary' },
         h('div', { class: 'fit-rings season-rings', role: 'img',
-          'aria-label': `Задания ${whole(daily.task_points)} из ${whole(taskLimit)}, бонус ${whole(daily.bonus)} из ${whole(bonusLimit)}, битвы ${whole(fights.points)} из ${whole(battleLimit)}` },
-        ring('tasks', daily.task_points, taskLimit), ring('bonus', daily.bonus, bonusLimit), ring('battles', fights.points, battleLimit)),
+          'aria-label': `Задания с оценками ${whole(taskValue)} из ${whole(taskLimit)}, бонус ${whole(daily.bonus)} из ${whole(bonusLimit)}, битвы ${whole(fights.points)} из ${whole(battleLimit)}` },
+        ring('tasks', taskValue, taskLimit), ring('bonus', daily.bonus, bonusLimit), ring('battles', fights.points, battleLimit)),
         h('div', { class: 'season-total' }, h('strong', { class: 'num' }, whole(mine.total)),
           h('span', { class: 'soft' }, `${plural(mine.total, 'балл', 'балла', 'баллов')} из ${whole(policy.maximum)} возможных`)),
         h('ul', { class: 'season-ring-legend' },
-          h('li', { 'data-part': 'tasks' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания', h('strong', { class: 'num' }, whole(daily.task_points))),
+          h('li', { 'data-part': 'tasks' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания', h('strong', { class: 'num' }, whole(taskValue))),
           h('li', { 'data-part': 'bonus' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Бонус', h('strong', { class: 'num' }, whole(daily.bonus))),
           h('li', { 'data-part': 'battles' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Битвы', h('strong', { class: 'num' }, whole(fights.points))))),
       h('details', { class: 'season-more' }, h('summary', null, 'Из чего складываются баллы'), h('div', { class: 'season-tiles' },
         h('article', { class: 'season-tile', 'data-part': 'tasks' },
-          h('h3', null, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания дня', h('strong', { class: 'num' }, whole(daily.task_points))),
+          h('h3', null, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания дня', h('strong', { class: 'num' }, whole(taskValue))),
           dayStrip(group),
-          h('p', { class: 'small soft' }, `${whole(daily.tasks)} из ${whole(list(group.daily).reduce((sum, item) => sum + (list(item.tasks).length || 5), 0) || 35)} заданий. Каждое — ${points(policy.task || 2)}.`)),
+          h('p', { class: 'small soft' }, `${whole(daily.tasks)} из ${whole(taskCount)} заданий. За задание — ${points(policy.task ?? 2)} и оценка тренера до ${whole(policy.grade_max ?? 10)}.`),
+          h('p', { class: 'small season-grades' }, grades > 0
+            ? `Оценки за выполнение: +${whole(grades)}${Number.isFinite(own.grade_average) ? `, средняя\u00a0${mark(own.grade_average)}` : ''}.`
+            : 'Оценок за выполнение пока нет.')),
         h('article', { class: 'season-tile', 'data-part': 'bonus' },
           h('h3', null, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Бонус за полные дни', h('strong', { class: 'num' }, whole(daily.bonus))),
           h('ol', { class: 'season-steps', 'aria-label': 'Ступени бонуса' }, steps.map((step) => h('li', { 'data-reached': String(daily.full_days >= step.days) },
@@ -200,15 +208,19 @@ window.TrainerSeason = (() => {
     const mine = person.season || { total: 0, daily: {}, battles: {} }, daily = mine.daily || {}, fights = mine.battles || {};
     const maximum = Math.max((group.score_policy || {}).maximum || 0, ...list(group.leaderboard).map((row) => row.season ? row.season.total : 0), 1);
     const opened = tools.expanded.has(key);
-    const metric = (title, value, note) => h('div', null, h('dt', null, title), h('dd', { class: 'num' }, value, note ? h('span', { class: 'small soft' }, ` ${note}`) : null));
+    const metric = (title, value, note, part) => h('div', part ? { 'data-metric': part } : null, h('dt', null, title),
+      h('dd', { class: 'num' }, value, note ? h('span', { class: 'small soft' }, ` ${note}`) : null));
+    const grades = daily.grades || 0, gradeAverage = Number.isFinite(person.grade_average) ? person.grade_average : null;
     const detail = h('tr', { class: 'groups-standing-details', hidden: !opened }, h('td', { colspan: 3 },
       h('section', { id, class: 'groups-participant-results', role: 'region', 'aria-label': `Баллы недели: ${tools.nameOf(person)}` },
         h('dl', { class: 'groups-participant-metrics' },
-          metric('Задания дня', points(daily.task_points || 0), `${whole(daily.tasks || 0)} шт.`),
-          metric('Бонус за полные дни', `+${whole(daily.bonus || 0)}`, `полных дней: ${whole(daily.full_days || 0)}`),
-          metric('Битвы', points(fights.points || 0), `${whole(fights.wins || 0)}–${whole(fights.draws || 0)}–${whole(fights.losses || 0)}`),
-          metric('Оценка тренера', person.trainer_average == null ? 'Пока нет' : `${mark(person.trainer_average)} / 10`)),
-        h('p', { class: 'small soft' }, 'Битвы показаны как победы–ничьи–поражения. Оценка тренера баллов не даёт: она решает спор при равных баллах и победах.'))));
+          metric('Задания', points(daily.task_points || 0), `${whole(daily.tasks || 0)} шт.`, 'tasks'),
+          metric('Оценки за выполнение', `+${whole(grades)}`, gradeAverage == null ? 'оценок пока нет' : `средняя\u00a0${mark(gradeAverage)}`, 'grades'),
+          metric('Бонус за полные дни', `+${whole(daily.bonus || 0)}`, `полных дней: ${whole(daily.full_days || 0)}`, 'bonus'),
+          metric('Битвы', points(fights.points || 0), `${whole(fights.wins || 0)}–${whole(fights.draws || 0)}–${whole(fights.losses || 0)}`, 'battles'),
+          metric('Индекс навыков', person.trainer_average == null ? 'Пока нет' : `${mark(person.trainer_average)} / 10`, 'на место не влияет', 'skill')),
+        h('p', { class: 'small soft' }, 'Битвы показаны как победы–ничьи–поражения. При равных баллах и победах выше тот, у кого выше средняя оценка за выполнение. '
+          + 'Индекс навыков — средняя оценка тренера по пяти критериям, на место он не влияет.'))));
     detail.hidden = !opened;
     const trigger = h('button', { class: 'groups-standing-trigger', type: 'button', 'aria-expanded': String(opened), 'aria-controls': id,
       'aria-label': `Баллы недели: ${tools.nameOf(person)}`, onclick: () => {
@@ -220,9 +232,13 @@ window.TrainerSeason = (() => {
     h('span', { class: 'groups-standing-identity' },
       h('span', { class: 'groups-standing-name' }, tools.nameOf(person), person.is_self ? h('span', { class: 'groups-standing-self small' }, ' · вы') : null),
       h('span', { class: 'season-meter season-meter-small', 'aria-hidden': 'true' },
-        h('span', { 'data-part': 'tasks', style: `width:${share(daily.task_points || 0, maximum)}` }),
+        h('span', { 'data-part': 'tasks', style: `width:${share(taskScore(daily), maximum)}` }),
         h('span', { 'data-part': 'bonus', style: `width:${share(daily.bonus || 0, maximum)}` }),
-        h('span', { 'data-part': 'battles', style: `width:${share(fights.points || 0, maximum)}` }))),
+        h('span', { 'data-part': 'battles', style: `width:${share(fights.points || 0, maximum)}` })),
+      // У первых трёх — тихая подпись индекса навыков. На место он не влияет, поэтому мелко и бледно.
+      index < TOP && Number.isFinite(person.trainer_average)
+        ? h('span', { class: 'season-skill-index small', title: 'Индекс навыков: средняя оценка тренера по пяти критериям. На место не влияет.' },
+          `индекс ${mark(person.trainer_average)}`) : null),
     h('span', { class: 'groups-standing-chevron', 'aria-hidden': 'true' }));
     return [h('tr', { class: `groups-standing-row${person.is_self ? ' groups-self' : ''}${index >= TOP ? ' season-extra' : ''}`, 'data-participant': key },
       h('td', { class: 'groups-rank num' }, h('span', { class: 'groups-rank-badge season-place', 'data-place': mine.total > 0 && person.rank <= 3 ? person.rank : '' }, person.rank || '—')),
@@ -291,7 +307,9 @@ window.TrainerSeason = (() => {
     return h('table', { class: 'season-rules-table' }, h('caption', { class: 'groups-sr-only' }, 'За что начисляются баллы недели'),
       h('tbody', null,
         row('Задание дня с разбором тренера', `+${whole(policy.task ?? 2)}`),
-        row(`Полный день: ${whole(policy.tasks_per_day ?? 5)} заданий`, `${whole(policy.day ?? 10)}`),
+        row('Оценка тренера за выполнение задания', `+1…+${whole(policy.grade_max ?? 10)}`),
+        row(`Полный день: ${whole(policy.tasks_per_day ?? 5)} заданий`, Number.isFinite(policy.day_maximum)
+          ? `${whole(policy.day ?? 10)}–${whole(policy.day_maximum)}` : `${whole(policy.day ?? 10)}`),
         list(policy.full_day_bonus).map((step) => row(`${days(step.days)} без пропусков за неделю`, `+${whole(step.bonus)}`)),
         row('Победа в битве', `+${whole(battle.win ?? 10)}`), row('Ничья в битве', `+${whole(battle.draw ?? 5)}`),
         row('Поражение в сыгранной битве', `+${whole(battle.loss ?? 2)}`)));
@@ -300,7 +318,7 @@ window.TrainerSeason = (() => {
     const policy = group.score_policy && group.score_policy.mode === 'season' ? group.score_policy : null;
     return h('details', { class: 'card groups-rules season-rules' }, h('summary', null, 'Как начисляются баллы'),
       policy ? [pointsTable(policy),
-        h('p', { class: 'season-rules-max' }, `Максимум недели в этой команде: ${whole(policy.daily_maximum)} за задания и ${whole(policy.battle_maximum)} за ${whole(policy.battles)} ${plural(policy.battles || 0, 'битву', 'битвы', 'битв')} — всего ${whole(policy.maximum)}.`)] : null,
+        h('p', { class: 'season-rules-max' }, `Максимум недели в этой команде: ${whole(policy.daily_maximum)} за задания с оценками и бонус, ${whole(policy.battle_maximum)} за ${whole(policy.battles)} ${plural(policy.battles || 0, 'битву', 'битвы', 'битв')} — всего ${whole(policy.maximum)}.`)] : null,
       h('ul', { class: 'groups-rule-list' }, list(group.rules).map((rule) => h('li', null, rule))),
       privacy ? h('p', { class: 'small soft groups-privacy' }, privacy) : null);
   }

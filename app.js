@@ -154,6 +154,28 @@ const BASE = location.pathname.replace(/[^/]*$/, '');
 const url = (path) => window.TrainerConnection ? TrainerConnection.url('/' + String(path).replace(/^\//, '')) : BASE + String(path).replace(/^\//, '');
 
 async function api(path, opts = {}) {
+  /* Один поход к Mac вместо нескольких одинаковых. Каждый запрос через туннель стоит около
+     полусекунды (замер 14.11), а запуск спрашивал состояние и каталог по два раза. Одинаковые
+     чтения за 4 секунды делят один ответ; любое изменение (не GET) сбрасывает эту память. */
+  const method = opts.method || 'GET';
+  if (method !== 'GET' && method !== 'HEAD') {
+    sharedReads.clear();
+    try { return await apiRequest(path, opts); } finally { sharedReads.clear(); }
+  }
+  if (opts.signal || opts.fresh || !SHARED_READ_PATHS.test(String(path))) return apiRequest(path, opts);
+  const now = Date.now(), hit = sharedReads.get(path);
+  if (hit && now - hit.at < SHARED_READ_MS) return copyOf(await hit.promise);
+  const promise = apiRequest(path, opts);
+  sharedReads.set(path, { at: now, promise });
+  promise.catch(() => { if (sharedReads.get(path)?.promise === promise) sharedReads.delete(path); });
+  return copyOf(await promise);
+}
+const sharedReads = new Map();
+const SHARED_READ_MS = 4000;
+const SHARED_READ_PATHS = /^\/?api\/(state|catalog|sessions|health)$/;
+const copyOf = (value) => { try { return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value)); } catch (_) { return value; } };
+
+async function apiRequest(path, opts = {}) {
   const init = { method: opts.method || 'GET', headers: { ...(opts.headers || {}) } };
   if (opts.signal) init.signal = opts.signal;
   if (init.method !== 'GET') init.headers['X-Trainer'] = '1';
@@ -1855,7 +1877,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
         h('details', { class: 'howto' }, h('summary', null, 'Подробности'), h('p', { class: 'small soft' }, an.refresh_error))) : null,
       h('div', { class: 'verdict-grid' },
         h('div', { class: 'hero-score' }, h('div', { class: 'val' }, f1(r.overall), h('small', null, ' / 10')), h('div', { class: 'small muted' }, 'средняя по пяти критериям')),
-        h('div', null, h('p', { class: 'verdict' }, r.verdict), deltas)),
+        h('div', null, taskGradeLine(r.task_grade), h('p', { class: 'verdict' }, r.verdict), deltas)),
       h('div', { class: 'meters' }, crit.map(([k, name]) => meterRow(name, r.scores[k], r.score_notes[k]))),
       h('div', { class: 'cols' },
         r.strengths.length ? h('div', null, h('h3', null, 'Сильные стороны'), h('ul', { class: 'list good' }, r.strengths.map((x) => h('li', null, x)))) : null,
@@ -1871,6 +1893,18 @@ async function ExerciseView(ctx, { exId, sid, params }) {
         h('div', { class: 'row', style: 'margin-top:6px' }, h('a', { class: 'btn', href: '#/ex/coach' }, icon('mic'), 'Ответить'))) : null);
     fillDeltas(deltas);
     return card;
+  }
+
+  // Оценка тренера за выполнение именно этого задания, 1–10 (решение владельца от 14.11.2026).
+  // В командном сезоне она идёт в баллы сверх 2 за задание. У старых разборов её нет — тогда строки нет.
+  function taskGradeLine(value) {
+    if (!Number.isFinite(value) || value < 1 || value > 10) return null;
+    const grade = Math.round(value);
+    // Только число, без слова шкалы: десятка задумана, чтобы 5 не звучало приговором (владелец, 14.11).
+    return h('p', { class: 'task-grade', 'data-tone': grade >= 8 ? 'good' : grade >= 4 ? 'mid' : 'low' },
+      h('span', { class: 'task-grade-label' }, 'Оценка за выполнение:'), ' ',
+      h('strong', { class: 'task-grade-value num' }, String(grade)), ' ',
+      h('span', { class: 'task-grade-of' }, 'из 10'));
   }
 
   async function fillDeltas(box) {

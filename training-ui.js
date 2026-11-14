@@ -13,10 +13,10 @@ window.TrainerTrainingUI = (() => {
     duel: [['path', { d: 'M32 12v41M23 53h18M14 21h36M14 21 6 38a9 9 0 0 0 16 0l-8-17ZM50 21l-8 17a9 9 0 0 0 16 0l-8-17Z' }]],
     conversation: [['path', { d: 'M10 13h33v23H25l-9 7v-7h-6Z' }], ['path', { d: 'M43 24h11v24h-6v7l-10-7H28v-7' }], ['path', { d: 'M19 24h15' }]],
     thought: [['circle', { cx: 15, cy: 19, r: 6 }], ['circle', { cx: 46, cy: 18, r: 6 }], ['circle', { cx: 32, cy: 46, r: 7 }], ['path', { d: 'M22 19h17M18 25l10 14M43 25l-8 14' }]],
-    retell: [['path', { d: 'M32 18c-7-5-16-6-23-3v35c7-3 16-2 23 3m0-35c7-5 16-6 23-3v35c-7-3-16-2-23 3V18Z' }], ['path', { d: 'M16 25c3-1 6 0 9 1M16 34c3-1 6 0 9 1M39 26c3-1 6-2 9-1M39 35c3-1 6-2 9-1' }]],
+    retell: [['path', { d: 'M12 13h40v28H31l-11 10V41h-8Z' }], ['path', { d: 'M24 21v8h6v-8h-6M24 29c0 4-2 6-5 7M36 21v8h6v-8h-6M36 29c0 4-2 6-5 7' }]],
     clarify: [['path', { d: 'M22 10H12v10M42 10h10v10M12 44v10h10M52 44v10H42' }], ['circle', { cx: 32, cy: 32, r: 11 }], ['path', { d: 'M32 25v8M32 38v.2' }]],
     synonyms: [['path', { d: 'M11 32h12c10 0 10-16 21-16h9M46 9l7 7-7 7M23 32c10 0 10 16 21 16h9M46 41l7 7-7 7' }]],
-    lexicon: [['path', { d: 'M15 12h31a5 5 0 0 1 5 5v36H17a5 5 0 0 1-5-5V17a5 5 0 0 1 5-5M12 44h39M24 35l8-16 8 16M27 29h10' }]],
+    lexicon: [['rect', { x: 12, y: 12, width: 40, height: 40, rx: 10 }], ['path', { d: 'M23 43l9-22 9 22M26.5 35h11' }]],
     all: [['rect', { x: 12, y: 12, width: 15, height: 15, rx: 3 }], ['rect', { x: 37, y: 12, width: 15, height: 15, rx: 3 }], ['rect', { x: 12, y: 37, width: 15, height: 15, rx: 3 }], ['rect', { x: 37, y: 37, width: 15, height: 15, rx: 3 }]],
     program: [['rect', { x: 13, y: 14, width: 38, height: 39, rx: 7 }], ['path', { d: 'M23 8v12M41 8v12M13 27h38M24 39l6 6 12-12' }]],
     progress: [['path', { d: 'M12 12v40h42M20 39l11-12 10 6 13-18M43 15h11v11' }]],
@@ -103,6 +103,31 @@ window.TrainerTrainingUI = (() => {
       caption.hidden = true;
     }
     section.destroy = () => { if (controller) controller.destroy(); if (captionAnimation) captionAnimation.cancel(); };
+    return section;
+  }
+  /* Ряд карточек как подборки в «Фитнесе»: листается пальцем, без обложек и дуг.
+     Классы home-shelf и home-shelf-card остаются — на них опираются главная и её проверки. */
+  function row({ id, title, items = [], label = title }) {
+    const entries = Array.isArray(items) ? items : [];
+    const titleId = `home-shelf-${id}-title`;
+    const cards = entries.map(item => h('a', {
+      class: `home-shelf-card fit-card training-tone-${item.tone || tones[item.icon] || 'blue'}`,
+      href: item.href, draggable: 'false',
+      'aria-label': [item.title, item.description, item.meta, item.badge == null ? '' : `Прошлая оценка ${item.badge} из 10`]
+        .filter(Boolean).map(part => String(part).trim().replace(/\.+$/, '')).join('. '),
+    },
+    h('span', { class: 'fit-card-top', 'aria-hidden': 'true' },
+      h('span', { class: 'fit-card-art' }, icon(item.icon || 'all')),
+      item.badge == null ? null : h('span', { class: 'fit-card-score' }, item.badge)),
+    item.kicker ? h('span', { class: 'fit-card-kicker', 'aria-hidden': 'true' }, item.kicker) : null,
+    h('span', { class: 'fit-card-title' }, item.title),
+    item.description ? h('span', { class: 'fit-card-description' }, item.description) : null,
+    h('span', { class: 'fit-card-meta', 'aria-hidden': 'true' }, item.meta || 'Открыть задание')));
+    const section = h('section', { class: 'training-home-section home-shelf fit-row', 'aria-labelledby': titleId, 'data-home-shelf': id },
+      h('div', { class: 'glass-home-section-heading fit-row-heading' }, h('h2', { id: titleId }, title),
+        h('span', { class: 'fit-row-count', 'aria-hidden': 'true' }, String(entries.length))),
+      h('div', { class: 'fit-row-track', role: 'group', 'aria-label': label }, cards));
+    section.destroy = () => {};
     return section;
   }
   const mean = values => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
@@ -245,7 +270,10 @@ window.TrainerTrainingUI = (() => {
     const today = h('section', { class: 'card today-card glass-home-today', 'aria-labelledby': 'home-today-title', 'data-home-today': '' },
       h('div', { class: 'glass-home-today-top' }, h('span', { class: 'glass-home-eyebrow' }, 'Программа дня'), h('span', { class: 'chip' }, dayLabel)),
       h('div', { class: 'glass-home-next' },
-        h('span', { class: `glass-home-next-icon training-tone-${tones[ps.next && ps.next.exercise] || 'blue'}`, 'aria-hidden': 'true' }, icon(ps.next && !finished ? ps.next.exercise : 'program')),
+        h('span', { class: 'glass-home-ring', 'aria-hidden': 'true' },
+          h('span', { class: 'fit-ring', 'data-part': 'tasks', 'data-empty': String(!(finished || completed > 0)),
+            style: `--p:${finished ? 100 : total ? Math.round(Math.min(completed, total) / total * 100) : 0}` }),
+          h('span', { class: 'glass-home-ring-count' }, String(finished ? total : completed), h('small', null, `/${total}`))),
         h('div', null, h('p', { class: 'glass-home-next-label' }, finished ? 'Хорошая работа' : ps.next ? `Упражнение ${nextIndex} из ${total}` : 'День закрыт'),
           h('h2', { id: 'home-today-title' }, todayTitle))),
       h('p', { class: 'glass-home-day-caption' }, dayCaption),
@@ -294,9 +322,8 @@ window.TrainerTrainingUI = (() => {
       catch (_) { imaginationData = { kinds: [] }; }
       if (!ctx.alive()) return null;
     }
-    // Полки главной — книжный шкаф с обложками (bookshelf.js); без него прежние карусели.
-    const books = !!(window.TrainerBookshelf && window.TrainerBookCovers);
-    const shelfOf = options => books ? TrainerBookshelf.mount(options) : shelf(options);
+    // Подборки главной — ряды карточек; книжную полку владелец убрал 14.11.2026.
+    const shelfOf = options => row(options);
     const trainingShelf = shelfOf({ id: 'training', title: 'Тренировки', items: trainingItems, label: 'Упражнения для речи' });
     const learningShelf = shelfOf({ id: 'learning', title: 'Мысль и слово', items: [...lessonItems, ...learningItems], label: 'Задания на мысль и слово' });
     const imaginationSection = window.TrainerImagination ? TrainerImagination.homeSection(imaginationData) : null;
@@ -327,8 +354,7 @@ window.TrainerTrainingUI = (() => {
         h('h1', null, 'Пора потренироваться')),
       h('div', { class: 'home-bento', 'data-home-bento': '' }, today, progressCard, startCard),
       window.TrainerProfiles ? TrainerProfiles.invitation(state) : null,
-      books ? h('div', { class: 'library', 'data-library': '' }, trainingShelf, learningShelf, imaginationSection)
-        : [trainingShelf, learningShelf, imaginationSection],
+      trainingShelf, learningShelf, imaginationSection,
       h('aside', { class: 'glass-home-install' },
         h('button', { type: 'button', class: 'btn ghost trainer-mobile-install-launch', 'data-trainer-install': '' }, window.icon('upload'), 'Добавить на экран телефона')));
     render(ctx, root);
@@ -337,5 +363,5 @@ window.TrainerTrainingUI = (() => {
       if (imaginationSection && typeof imaginationSection.destroy === 'function') imaginationSection.destroy();
     } };
   }
-  return { icon, tile, grid, shelf, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge, homeView };
+  return { icon, tile, grid, shelf, row, progressSessions, scoreTrend, criteriaTrend, programSessions, progressGauge, homeView };
 })();

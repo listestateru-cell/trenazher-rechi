@@ -120,15 +120,16 @@ window.TrainerDuels = (() => {
       const selected = matches.find((match) => match.id === (armedId || focus));
       const demoWeek = data && ['demo', 'demo_finished'].includes(data.phase);
       const demoFinals = demoWeek && data.phase === 'demo_finished' && data.demo_completed === true;
+      const season = !!data && data.mode === 'season';
       syncRecordPanel(matches);
       const nodes = [
         h('a', { class: 'groups-back', href: `#/groups/${enc(gid)}` }, icon('back'), 'К группе'),
         h('header', { class: 'groups-heading' }, h('div', { class: 'groups-heading-copy' }, h('p', { class: 'groups-eyebrow' }, 'Минута ассоциаций'),
-          h('h1', null, 'Поединки недели'), h('p', { class: 'soft' }, data && data.group ? data.group.name : 'Общее слово · 60 секунд · без повторов')),
+          h('h1', null, season ? 'Битвы недели' : 'Поединки недели'), h('p', { class: 'soft' }, data && data.group ? data.group.name : 'Общее слово · 60 секунд · без повторов')),
         action(loading ? 'Обновляю…' : 'Обновить', () => load(), loading || recording || starting)),
         error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
         data ? h('p', { class: 'soft' }, data.week && (data.week.label || `${data.week.start} — ${data.week.end}`) || '', ' · ',
-          ({ scheduled: 'Ожидаем субботу', demo: 'Демонстрационный круговой этап', demo_finished: 'Демонстрация завершённой недели', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём завершения начатых встреч и проверки ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
+          ({ season: data.week && data.week.current === false ? 'Битвы этой недели завершены' : 'Битвы идут всю неделю, с понедельника по воскресенье', scheduled: 'Ожидаем субботу', demo: 'Демонстрационный круговой этап', demo_finished: 'Демонстрация завершённой недели', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём завершения начатых встреч и проверки ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
         data && !demoWeek && data.phase === 'scheduled' ? h('section', { class: 'card stack', role: 'status', 'aria-label': 'Расписание поединков' },
           h('h2', null, 'Поединки — в выходные'),
           h('p', null, 'В субботу каждый играет с каждым. В воскресенье — полуфиналы, финал и матч за третье место. Сейчас можно посмотреть соперников и договориться о времени.'),
@@ -140,7 +141,10 @@ window.TrainerDuels = (() => {
         demoFinals ? finalWeek(matches) : null,
         data && !demoWeek && data.podium && data.podium.length ? h('div', { class: 'card stack' }, h('h2', null, 'Итог турнира'),
           h('ol', { class: 'duel-podium' }, data.podium.slice(0,3).map((id, index) => h('li', null, h('span', { class: 'num' }, `${index + 1} место`), identity((data.table || []).find((row) => String(row.user_id) === String(id)) || { name: 'Участник' }))))) : null,
-        h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит поединок и за что начисляют баллы'),
+        season ? h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит битва и за что начисляют баллы'),
+          h('ol', { class: 'list' }, (data.rules || []).map((rule) => h('li', null, rule))),
+          h('p', { class: 'small soft' }, 'Держите экран открытым и не переключайте приложения во время записи. При обрыве связи сохраните запись; несостоявшуюся встречу можно повторить с согласия обоих.'))
+        : h('details', { class: 'card duel-rules' }, h('summary', null, 'Как проходит поединок и за что начисляют баллы'),
           h('ol', { class: 'list' }, h('li', null, 'Круговой этап проходит в субботу, финальные встречи — в воскресенье. Договоритесь о времени. В день встречи оба откройте эту страницу и нажмите «Готов». Сначала браузер проверит микрофон.'),
             h('li', null, 'После подтверждения обоих начнётся общий отсчёт. Слово откроется одновременно с началом минуты. Называйте подходящие слова по одному.'),
             h('li', null, 'Тренер проверит смысловую связь. Повторы, формы одного слова и посторонние слова не учитываются. Разбор своего ответа можно открыть отдельно.'),
@@ -160,7 +164,7 @@ window.TrainerDuels = (() => {
             h('h2', null, 'Демонстрационные встречи'), h('div', { class: 'duel-match-list' }, matches.map((match) => matchCard(match)))],
         ] : [
           h('h2', null, 'Ваши встречи'), mine.length ? h('div', { class: 'duel-match-list' }, mine.filter((match) => !selected || selected.id !== match.id).map((match) => matchCard(match))) : h('div', { class: 'card' }, h('p', { class: 'soft' },
-            (data.table || []).length >= 2 ? 'У вас пока нет встреч в этой сетке. Участие и состав группы можно проверить в кабинете. Круговой этап проходит в субботу; воскресенье отведено финалам.' : 'Для поединка нужны хотя бы два участника группы. Руководитель может отправить приглашение знакомым.')),
+            (data.table || []).length >= 2 ? (season ? 'У вас пока нет встреч на этой неделе. Участие и состав группы можно проверить в кабинете.' : 'У вас пока нет встреч в этой сетке. Участие и состав группы можно проверить в кабинете. Круговой этап проходит в субботу; воскресенье отведено финалам.') : 'Для поединка нужны хотя бы два участника группы. Руководитель может отправить приглашение знакомым.')),
           tableCard(data.table || data.league || []),
           h('details', { class: 'card duel-all' }, h('summary', null, `Все встречи · ${matches.length}`), h('div', { class: 'duel-match-list' }, matches.filter((match) => !inMatch(match)).map((match) => matchCard(match)))),
         ]];
@@ -201,7 +205,7 @@ window.TrainerDuels = (() => {
       recordControl.setState({ recording: actualRecording, disabled: pending || starting || (!canReady && !canResume), hidden: false,
         label: canResume ? 'Включить микрофон и продолжить' : 'Готов · проверить микрофон' });
       const opponent = (match.players || []).find(player => !player.is_self);
-      recordTitle.textContent = opponent ? `Поединок с ${opponent.name}` : 'Запись поединка';
+      recordTitle.textContent = opponent ? `Соперник: ${opponent.name}` : 'Запись поединка';
       recordTopic.textContent = match.topic ? `Общее слово: ${match.topic}` : 'Слово откроется в момент старта.';
       recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически' : canResume ? 'Включить микрофон и продолжить' : armed ? 'Готов · ждём общего старта' : 'Готов · проверить микрофон';
       recordClock.hidden = !(['countdown', 'live'].includes(match.status) || actualRecording);
@@ -262,10 +266,10 @@ window.TrainerDuels = (() => {
       const { canReady, canResume } = recordAvailability(match);
       const inRecordPanel = hasVinyl && recordMatchId === match.id;
       return h('article', { class: `card duel-match ${selected ? 'duel-selected' : ''}`, 'data-match': match.id },
-        h('div', { class: 'row' }, h('span', { class: 'chip' }, names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
+        h('div', { class: 'row' }, h('span', { class: 'chip' }, data && data.mode === 'season' ? 'Битва недели' : names[match.kind || match.stage] || 'Встреча'), demo ? h('span', { class: 'groups-demo-label' }, 'Демо') : null,
           h('span', { class: 'small soft' }, demo ? 'Пример результата' : statuses[match.status] || match.status)),
         h('h3', { class: 'duel-match-heading' }, (match.players || []).flatMap((player, index) => [
-          index ? h('span', { 'aria-hidden': 'true' }, '—') : null,
+          index ? h('span', { class: 'duel-vs', 'aria-hidden': 'true' }, 'VS') : null,
           h('span', { class: 'duel-match-person' }, avatar(player), h('span', null, player.name + (player.is_self ? ' (вы)' : '')))])),
         !demo ? h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))) : null,
         match.topic ? h('p', { class: 'duel-topic' }, 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, 'Слово откроется в момент старта.'),
@@ -274,8 +278,9 @@ window.TrainerDuels = (() => {
         recording && armedId === match.id ? h('p', { class: 'duel-recording', role: 'status' }, 'Идёт запись. Через минуту она отправится автоматически.') : null,
         done ? h('div', { class: 'duel-results' }, result.map((row) => h('div', { class: 'duel-result-row' },
           h('strong', null, ((match.players || []).find((player) => player.id === row.user_id) || {}).name || 'Участник'),
-          h('p', { class: 'num' }, `Слова: ${number(row.count)} · Навык: ${number(row.grade)}/10`),
-          h('p', { class: 'small soft' }, `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
+          h('p', { class: 'num' }, row.battle_points != null ? `Слова: ${number(row.count)}` : `Слова: ${number(row.count)} · Навык: ${number(row.grade)}/10`),
+          h('p', { class: 'small soft' }, row.battle_points != null ? `Баллы недели: +${number(row.battle_points)}`
+            : `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
           h('p', { class: 'soft' }, match.draw ? 'Ничья' : `Победитель: ${((match.players || []).find((player) => player.id === match.winner_id) || {}).name || '—'}`)) : null,
         !demo ? h('div', { class: 'row duel-actions' },
           canReady && !inRecordPanel ? action(hasVinyl ? 'Открыть запись встречи' : 'Готов · проверить микрофон', () => hasVinyl ? selectRecording(match) : ready(match), false, true) : null,
@@ -285,7 +290,20 @@ window.TrainerDuels = (() => {
           self && match.can_reset && !recording && !starting ? action((match.reset_requested_by || []).includes(self.id) ? 'Ждём согласия соперника' : 'Согласиться на повтор', () => mutate(match, 'reset'), (match.reset_requested_by || []).includes(self.id)) : null,
           match.own_session_id && !recording ? h('a', { class: 'btn ghost', href: `#/s/${enc(match.own_session_id)}` }, 'Мой ответ') : null) : null);
     }
+    function seasonTable(rows) {
+      const pts = data.points || {};
+      return h('article', { class: 'card stack' }, h('h2', null, 'Таблица битв'),
+        h('p', { class: 'small soft' }, `Победа — ${number(pts.win)}, ничья — ${number(pts.draw)}, поражение — ${number(pts.loss)}. Эти баллы входят в общий счёт недели в кабинете группы. В–Н–П: победы, ничьи, поражения.`),
+        rows.length ? h('table', { class: 'groups-ranking duel-ranking' }, h('caption', { class: 'groups-sr-only' }, 'Баллы за битвы этой недели'),
+          h('thead', null, h('tr', null, [['Место', 'duel-rank-col'], ['Участник', ''], ['В–Н–П', 'duel-record-col'], ['Баллы', 'duel-points-col']].map(([title, className]) => h('th', { scope: 'col', class: className }, title)))),
+          h('tbody', null, rows.map((row) => h('tr', null, h('td', { class: 'num' }, row.rank || '—'),
+            h('th', { scope: 'row', class: 'duel-ranking-person' }, identity(row, 'duel-ranking-identity'),
+              row.words_average != null || row.accepted_average != null ? h('span', { class: 'duel-ranking-detail small soft' }, `В среднем слов: ${number(row.words_average ?? row.accepted_average)}`) : null),
+            h('td', { class: 'num' }, `${row.wins ?? 0}–${row.draws ?? 0}–${row.losses ?? 0}`), h('td', { class: 'num' }, row.battle_points ?? row.points ?? 0)))))
+          : h('p', { class: 'soft' }, 'Баллы появятся после первой сыгранной битвы.'));
+    }
     function tableCard(rows) {
+      if (data.mode === 'season') return seasonTable(rows);
       const demoFinals = data.phase === 'demo_finished' && data.demo_completed === true;
       const qualification = new Map((demoFinals && data.qualification_table || []).map((row) => [row.user_id, row]));
       const frozenOrder = qualification.size > 0;

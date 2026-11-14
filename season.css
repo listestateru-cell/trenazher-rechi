@@ -1,0 +1,196 @@
+/* Командный сезон. Палитра и масштабы — из общих токенов тренажёра.
+   Три источника баллов везде одного цвета: задания, бонус, битвы. */
+.groups-view, .duels-view {
+  --season-tasks: var(--accent);
+  --season-bonus: var(--ord-2);
+  --season-battles: var(--warn);
+  --season-gold: #b98a1f;
+  --season-silver: #7d8c88;
+  --season-bronze: #a9683f;
+  --season-up: var(--good-ink);
+  --season-down: var(--bad-ink);
+  --season-on-fill: #ffffff;
+}
+:root[data-theme="dark"] .groups-view, :root[data-theme="dark"] .duels-view {
+  --season-gold: #e2bb5c;
+  --season-silver: #b9c6c1;
+  --season-bronze: #d99b74;
+  --season-on-fill: #10201a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .groups-view, :root:not([data-theme="light"]) .duels-view {
+    --season-gold: #e2bb5c;
+    --season-silver: #b9c6c1;
+    --season-bronze: #d99b74;
+    --season-on-fill: #10201a;
+  }
+}
+
+.season-eyebrow { font-size: 13px; font-weight: 600; color: var(--accent-ink); letter-spacing: .01em; }
+.season-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--season-tasks); }
+[data-part="bonus"] .season-dot { background: var(--season-bonus); }
+[data-part="battles"] .season-dot { background: var(--season-battles); }
+.season-you { color: var(--ink-2); font-weight: 400; white-space: nowrap; }
+.season-chip { font-weight: 600; }
+
+/* ---- шапка сезона и лента недель ---- */
+.season-hero { display: flex; flex-direction: column; gap: 20px; }
+.season-hero-copy { display: flex; flex-direction: column; gap: 8px; max-width: 70ch; }
+.season-hero-copy h2 { font-size: 30px; line-height: 1.15; letter-spacing: -.02em; }
+.season-weeks { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.season-week { min-width: 0; }
+.season-week-link { display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 96px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); transition: border-color .16s ease, background .16s ease; }
+a.season-week-link:hover { text-decoration: none; border-color: var(--line-2); background: var(--surface-2); }
+a.season-week-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.season-week[data-state="current"] .season-week-link { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.season-week[data-state="future"] .season-week-link { background: transparent; border-style: dashed; color: var(--ink-2); }
+.season-week[data-chosen="true"]:not([data-state="current"]) .season-week-link { border-color: var(--ink-2); }
+.season-week-number { font-size: 16px; font-weight: 650; }
+.season-week-dates { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.season-week-result { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; min-width: 0; }
+.season-week-champion { display: flex; flex-direction: column; min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.season-week-tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--season-gold); }
+.profile-avatar.season-week-avatar { width: 30px; height: 30px; font-size: 13px; border-radius: 50%; flex: none; }
+
+/* ---- свои баллы недели ---- */
+.season-score { display: flex; flex-direction: column; gap: 16px; }
+.season-total { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 12px; }
+.season-total strong { font-size: 56px; line-height: 1; font-weight: 700; letter-spacing: -.03em; }
+.season-meter { display: flex; width: 100%; height: 14px; overflow: hidden; border-radius: 999px; background: var(--track); }
+.season-meter > span { display: block; height: 100%; min-width: 0; background: var(--season-tasks); }
+.season-meter > span[data-part="bonus"] { background: var(--season-bonus); }
+.season-meter > span[data-part="battles"] { background: var(--season-battles); }
+.season-meter > span + span { box-shadow: -2px 0 0 var(--surface); }
+.season-meter-small { height: 6px; max-width: 220px; }
+.season-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.season-tile { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.season-tile h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.season-tile h3 strong { margin-left: auto; font-size: 22px; font-weight: 650; letter-spacing: -.01em; }
+.season-tile > p { margin-top: auto; line-height: 1.5; }
+.season-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.season-day { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.season-day-bar { position: relative; display: block; width: 100%; height: 52px; overflow: hidden; border-radius: 8px; background: var(--track); }
+.season-day-bar > span { position: absolute; left: 0; right: 0; bottom: 0; background: var(--season-tasks); opacity: .55; }
+.season-day[data-full="true"] .season-day-bar > span { opacity: 1; }
+.season-day[data-future="true"] .season-day-bar { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.season-day[data-today="true"] .season-day-bar { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.season-day-name { font-size: 12px; color: var(--ink-2); }
+.season-day[data-today="true"] .season-day-name { color: var(--ink); font-weight: 650; }
+.season-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.season-steps li { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 6px 4px; border-radius: 8px; background: var(--track); color: var(--ink-2); text-align: center; }
+.season-steps li strong { font-size: 17px; font-weight: 650; color: inherit; }
+.season-steps li[data-reached="true"] { background: var(--season-bonus); color: var(--season-on-fill); }
+.season-record { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.season-record > div { display: flex; flex-direction: column-reverse; align-items: center; justify-content: center; gap: 2px; min-height: 52px; padding: 6px 4px; border-radius: 8px; background: var(--track); }
+.season-record dt { font-size: 12px; color: var(--ink-2); }
+.season-record dd { margin: 0; font-size: 19px; font-weight: 650; }
+.season-waiting { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding: 12px 16px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--season-battles) 14%, var(--surface)); font-weight: 600; }
+.season-waiting .btn { margin-left: auto; }
+.season-waiting-people { display: inline-flex; }
+.profile-avatar.season-waiting-avatar { width: 32px; height: 32px; font-size: 14px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
+.season-waiting-avatar + .season-waiting-avatar { margin-left: -8px; }
+
+/* ---- пьедестал прошлой недели ---- */
+.season-podium { display: flex; flex-direction: column; gap: 16px; }
+.season-podium-empty { gap: 8px; }
+.season-podium-empty h2 { font-size: 20px; }
+.season-stage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.season-stage-step { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.season-stage-step[data-place="1"] { order: 2; }
+.season-stage-step[data-place="2"] { order: 1; }
+.season-stage-step[data-place="3"] { order: 3; }
+.season-stage-people { display: flex; flex-direction: column; gap: 10px; }
+.season-stage-person { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; text-align: center; }
+.season-stage-person strong { font-size: 15px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.profile-avatar.season-stage-avatar { width: 56px; height: 56px; font-size: 22px; border-radius: 50%; }
+.season-stage-step[data-place="1"] .season-stage-avatar { width: 72px; height: 72px; font-size: 28px; box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--season-gold); }
+.season-stage-block { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 10px 8px; border-radius: 14px 14px 6px 6px; background: var(--surface-3); color: var(--ink); text-align: center; }
+.season-stage-step[data-place="1"] .season-stage-block { min-height: 112px; background: var(--accent); color: var(--season-on-fill); }
+.season-stage-step[data-place="2"] .season-stage-block { min-height: 84px; }
+.season-stage-step[data-place="3"] .season-stage-block { min-height: 64px; }
+.season-stage-step[data-empty="true"] .season-stage-block { opacity: .55; }
+.season-stage-place { font-size: 28px; font-weight: 700; line-height: 1; }
+
+/* ---- срез ---- */
+.season-checkpoint { display: flex; flex-direction: column; gap: 14px; }
+.season-checkpoint-call { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 20px; padding: 16px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.season-checkpoint-call strong { font-size: 17px; font-weight: 650; }
+.season-checkpoint-call p { margin-top: 4px; }
+.season-track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(64px, 1fr); gap: 10px; margin: 0; padding: 4px 0 0; list-style: none; overflow-x: auto; }
+.season-track-step { display: grid; grid-template-rows: 20px 96px auto auto auto; justify-items: center; gap: 4px; min-width: 0; text-align: center; }
+.season-track-bar { position: relative; display: block; width: 100%; max-width: 72px; height: 96px; border-radius: 10px; background: var(--track); overflow: hidden; }
+.season-track-bar > span { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 10px 10px 0 0; background: var(--accent); }
+.season-track-step[data-state="open"] .season-track-bar { background: transparent; box-shadow: inset 0 0 0 2px var(--accent); }
+.season-track-step[data-state="upcoming"] .season-track-bar { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+.season-track-step[data-state="missed"] .season-track-bar { background: repeating-linear-gradient(135deg, var(--track) 0 6px, transparent 6px 12px); }
+.season-track-score { font-size: 17px; font-weight: 650; }
+.season-track-step:not([data-state="done"]) .season-track-score { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.season-track-step[data-state="open"] .season-track-score { color: var(--accent-ink); font-weight: 650; }
+.season-track-name { color: var(--ink-2); }
+.season-track-delta { font-size: 13px; font-weight: 650; min-height: 20px; }
+[data-trend="up"] { color: var(--season-up); }
+[data-trend="down"] { color: var(--season-down); }
+[data-trend="flat"] { color: var(--ink-2); }
+.season-track-link { min-height: 28px; display: inline-flex; align-items: center; }
+.season-track-summary { padding-top: 12px; border-top: 1px solid var(--line); }
+.season-track-summary strong { font-size: 18px; }
+
+/* ---- таблица недели и срезы команды ---- */
+.season-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.season-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.season-place[data-place="1"] { background: color-mix(in srgb, var(--season-gold) 22%, var(--surface)); color: var(--ink); font-weight: 700; box-shadow: inset 0 0 0 1px var(--season-gold); }
+.season-place[data-place="2"] { background: color-mix(in srgb, var(--season-silver) 22%, var(--surface)); color: var(--ink); font-weight: 700; box-shadow: inset 0 0 0 1px var(--season-silver); }
+.season-place[data-place="3"] { background: color-mix(in srgb, var(--season-bronze) 22%, var(--surface)); color: var(--ink); font-weight: 700; box-shadow: inset 0 0 0 1px var(--season-bronze); }
+.season-standings .groups-standing-identity { gap: 8px; align-items: stretch; }
+.groups-participant-metrics > div { padding: 10px 14px; }
+.season-team-scroll { overflow-x: auto; margin-top: 8px; }
+.season-team-table { table-layout: auto; min-width: 420px; font-size: 15px; }
+.season-team-table th.num, .season-team-table td.num { text-align: right; white-space: nowrap; }
+.season-team-person { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; }
+.profile-avatar.season-team-avatar { width: 32px; height: 32px; font-size: 14px; border-radius: 50%; flex: none; }
+.season-team-change { font-weight: 650; }
+
+/* ---- правила и управление ---- */
+.season-rules-table { width: 100%; margin-top: 12px; border-collapse: collapse; font-size: 16px; }
+.season-rules-table th, .season-rules-table td { padding: 12px 4px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; vertical-align: baseline; }
+.season-rules-table td { width: 72px; text-align: right; font-size: 18px; font-weight: 650; white-space: nowrap; }
+.season-rules-max { margin-top: 14px; padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); }
+.season-manage { display: flex; flex-direction: column; gap: 14px; }
+.season-start-form { max-width: 760px; }
+.season-start-form h2 { font-size: 22px; }
+.season-roster .groups-friend-list li:first-child { border-top: 0; }
+
+/* ---- срез на экране упражнения ---- */
+.checkpoint-task { display: flex; flex-direction: column; gap: 10px; }
+.checkpoint-task-step { font-size: 13px; font-weight: 600; color: var(--accent-ink); }
+.checkpoint-task-text { font-size: 18px; line-height: 1.6; font-weight: 400; letter-spacing: normal; text-wrap: pretty; max-width: 68ch; }
+.checkpoint-task-question { font-size: 22px; line-height: 1.35; font-weight: 600; letter-spacing: -.01em; }
+.checkpoint-task-step, .checkpoint-task-hidden { letter-spacing: normal; font-weight: 600; }
+.checkpoint-task-hidden { font-size: 16px; font-weight: 400; }
+.checkpoint-task + .checkpoint-task { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.checkpoint-task-hidden { padding: 18px; border: 1px dashed var(--line-2); border-radius: var(--radius-sm); color: var(--ink-2); text-align: center; }
+
+@media (max-width: 800px) {
+  .season-tiles { grid-template-columns: minmax(0, 1fr); }
+  .season-tile { padding: 14px; }
+}
+@media (max-width: 600px) {
+  .season-hero-copy h2 { font-size: 25px; }
+  .season-weeks { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .season-week-link { min-height: 88px; padding: 12px; }
+  .season-total strong { font-size: 46px; }
+  .season-stage { gap: 6px; }
+  .profile-avatar.season-stage-avatar { width: 46px; height: 46px; font-size: 18px; }
+  .season-stage-step[data-place="1"] .season-stage-avatar { width: 58px; height: 58px; font-size: 23px; }
+  .season-stage-person strong { font-size: 14px; }
+  .season-stage-block { padding: 8px 4px; }
+  .season-stage-block .small { font-size: 11px; line-height: 1.25; }
+  .season-checkpoint-call .btn { width: 100%; justify-content: center; }
+  .season-waiting .btn { margin-left: 0; width: 100%; justify-content: center; }
+  .season-track { grid-auto-columns: minmax(56px, 1fr); gap: 6px; }
+  .checkpoint-task-text { font-size: 17px; }
+  .checkpoint-task-question { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .season-week-link { transition: none !important; }
+}

@@ -56,7 +56,8 @@ const ICONS = {
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.2"/>',
   play: '<path d="M8 5.5v13l10.5-6.5L8 5.5Z" fill="currentColor" stroke="none"/>',
   pause: '<path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor" stroke="none"/>',
-  book: '<path d="M12 5.5C9.5 4 6 4 3.5 5.5V20c2.5-1.5 6-1.5 8.5 0m0-14.5c2.5-1.5 6-1.5 8.5 0V20c-2.5-1.5-6-1.5-8.5 0V5.5Z"/>',
+  // Имя «book» осталось у заданий по классике; рисунок — кавычки: книжные образы владелец убрал 14.11.2026.
+  book: '<path d="M10 6.5H6.5A1.5 1.5 0 0 0 5 8v4h5V6.5ZM10 12c0 3.2-1.6 5-4.4 5.6M19 6.5h-3.5A1.5 1.5 0 0 0 14 8v4h5V6.5ZM19 12c0 3.2-1.6 5-4.4 5.6"/>',
 };
 function icon(name, cls) {
   const el = document.createElementNS(NS, 'svg');
@@ -86,6 +87,10 @@ function plural(n, one, few, many) {
 function mmss(sec) {
   sec = Math.max(0, Math.round(sec));
   return `${Math.floor(sec / 60)}:${pad(sec % 60)}`;
+}
+/* Подсказки про пробел — только там, где есть клавиатура и мышь. На телефоне их некуда нажать. */
+function keyboardHints() {
+  try { return !window.matchMedia || window.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (_) { return true; }
 }
 function todayStr(d = new Date()) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1088,8 +1093,11 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const busy = () => v.startRequested || v.thoughtMicBusy || ['prep', 'rec', 'upload', 'asking', 'starting'].includes(v.stage);
 
   /* ---- шапка и тема ---- */
-  const backHref = v.groupId ? `#/groups/${v.groupId}` : (v.programDay ? '#/program' : (sid ? '#/history' : '#/'));
-  const backText = v.groupId ? 'К группе' : (v.programDay ? 'Программа дня' : (sid ? 'История' : 'Все упражнения'));
+  // Срез команды идёт через тот же диктофон, но текст и вопрос задаёт сервер.
+  v.checkpoint = (v.session && v.session.checkpoint) || null;
+  const backHref = v.checkpoint ? `#/groups/${encodeURIComponent(v.checkpoint.group_id)}`
+    : v.groupId ? `#/groups/${v.groupId}` : (v.programDay ? '#/program' : (sid ? '#/history' : '#/'));
+  const backText = v.checkpoint || v.groupId ? 'К группе' : (v.programDay ? 'Программа дня' : (sid ? 'История' : 'Все упражнения'));
   const firstVisit = !prefs.get('seen.' + v.exId, false);
   prefs.set('seen.' + v.exId, true);
 
@@ -1099,14 +1107,37 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const stepperEl = h('div', { class: 'stepper' });
   const topicHint = h('div', { class: 'hint-line' }, icon('info'), v.ex.hint);
   const topicCard = h('section', { class: 'card topic-card' },
-    h('div', { class: 'topic-label' }, v.exId === 'coach' ? `${v.ex.topic_label} · уровень ${v.session ? v.session.level : state.coach_level} из 5` : v.ex.topic_label),
+    h('div', { class: 'topic-label' }, v.checkpoint ? `${v.checkpoint.title}${v.checkpoint.group_name ? ` · ${v.checkpoint.group_name}` : ''}`
+      : v.exId === 'coach' ? `${v.ex.topic_label} · уровень ${v.session ? v.session.level : state.coach_level} из 5` : v.ex.topic_label),
     topicTextEl, topicTools,
     topicHint,
     stepperEl, extraBox);
 
+  function renderCheckpointTopic() {
+    const hidden = ['prep', 'rec'].includes(v.stage);
+    const step = v.stage === 'rec' ? v.recIndex : nextIndex();
+    const block = (label, ...body) => h('div', { class: 'checkpoint-task' }, h('p', { class: 'checkpoint-task-step' }, label), body);
+    if (step == null) {
+      // Обе записи отправлены: условие остаётся рядом с разбором.
+      topicTextEl.append(block('Текст для пересказа', h('p', { class: 'checkpoint-task-text' }, v.checkpoint.text)),
+        block('Вопрос', h('p', { class: 'checkpoint-task-question' }, v.checkpoint.question)));
+      return;
+    }
+    if (step === 0) {
+      topicTextEl.append(block('Шаг 1 из 2 · пересказ текста', hidden
+        ? h('p', { class: 'checkpoint-task-hidden', role: 'status' }, 'Текст скрыт. Перескажите его своими словами.')
+        : h('p', { class: 'checkpoint-task-text' }, v.checkpoint.text)));
+      if (!hidden) topicTools.append(h('span', { class: 'small soft' }, 'Прочитайте текст про себя, без спешки. Когда начнёте запись, он скроется: на пересказ 60 секунд.'));
+      return;
+    }
+    topicTextEl.append(block('Шаг 2 из 2 · ответ на вопрос', h('p', { class: 'checkpoint-task-question' }, v.checkpoint.question)));
+    if (!hidden) topicTools.append(h('span', { class: 'small soft' }, 'Скажите, что думаете вы, и объясните почему. На ответ 60 секунд.'));
+  }
+
   function renderTopic() {
     topicTextEl.replaceChildren();
     topicTools.replaceChildren();
+    if (v.checkpoint) { renderCheckpointTopic(); return; }
     const locked = !!v.session || !!v.groupId;
     if (isFree) {
       if (locked) topicTextEl.textContent = v.topic || 'Свободная речь';
@@ -1210,6 +1241,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
 
   function renderStage() {
     syncReviewLayout();
+    if (v.checkpoint) renderTopic();  // текст скрывается на время записи и меняется между шагами
     stage.dataset.mode = v.stage;
     if (vinyl) vinyl.setRecording(v.stage === 'rec');
     stage.classList.remove('ending');
@@ -1242,7 +1274,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       setRing(0);
       center.append(h('div', { class: 'pulse' }, icon('speaker', 'big-ico')));
       stageTitle.textContent = 'Тренер задаёт вопрос…';
-      stageSub.append('После вопроса — три секунды на подготовку. ', h('span', { class: 'kbd' }, 'Пробел'), ' — пропустить озвучку');
+      if (typeof keyboardHints !== 'function' || keyboardHints()) stageSub.append('После вопроса — три секунды на подготовку. ', h('span', { class: 'kbd' }, 'Пробел'), ' — пропустить озвучку');
+      else stageSub.textContent = 'После вопроса — три секунды на подготовку.';
       return;
     }
     if (v.stage === 'rec') {
@@ -1253,7 +1286,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
         h('span', { class: 'sq', 'aria-hidden': 'true' }), vinyl ? 'Остановить запись' : null);
       if (vinyl) stageActions.append(stopBtn); else center.append(stopBtn);
       stageTitle.append(v.timeEl);
-      stageSub.textContent = lim ? 'секунд осталось · пробел — закончить раньше' : 'идёт запись · пробел — закончить';
+      stageSub.textContent = typeof keyboardHints !== 'function' || keyboardHints() ? (lim ? 'секунд осталось · пробел — закончить раньше' : 'идёт запись · пробел — закончить')
+        : (lim ? 'секунд осталось' : 'идёт запись');
       if (v.backupWarning) stageActions.append(h('p', { class: 'small soft', role: 'status' }, v.backupWarning));
       return;
     }
@@ -1297,7 +1331,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       center.append(h('div', null, h('div', { style: 'font-size:44px;line-height:1' }, '✓')));
       stageTitle.textContent = p.length > 1 ? 'Все попытки записаны' : 'Запись готова';
       stageSub.textContent = v.session && v.session.analysis && v.session.analysis.status === 'done' ? 'Разбор ниже' : 'Тренер разбирает речь — это секунд двадцать';
-      stageActions.append(h('a', { class: 'btn ghost small', href: freshHref() }, icon('shuffle'), isFree ? 'Новая запись' : 'Новая тема'));
+      stageActions.append(v.checkpoint ? h('a', { class: 'btn ghost small', href: backHref }, 'К команде', icon('arrow'))
+        : h('a', { class: 'btn ghost small', href: freshHref() }, icon('shuffle'), isFree ? 'Новая запись' : 'Новая тема'));
       return;
     }
     const startLabel = v.stage === 'between' ? 'Дальше' : (isFree ? 'Запись' : 'Начать');
@@ -1306,13 +1341,14 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       center.append(btn);
     }
     stageTitle.textContent = isFree ? 'Запись' : (label || 'Запись');
-    stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), ` — старт, ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
-    if (v.stage === 'between' && v.session) {
+    if (typeof keyboardHints !== 'function' || keyboardHints()) stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), ` — старт, ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
+    else stageSub.append(`После нажатия — ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
+    if (v.stage === 'between' && v.session && !v.checkpoint) {
       const prev = v.session.takes.filter((t) => t.status !== 'missing').length - 1;
       if (prev >= 0) stageActions.append(h('button', { class: 'btn ghost small', type: 'button', onclick: () => rerecord(prev) }, icon('redo'), 'Перезаписать прошлую'));
     }
     const doneCount = v.session ? v.session.takes.filter((t) => t.status === 'done').length : 0;
-    if (v.session && !allUploaded() && doneCount > 0 && p.length > 1) {
+    if (v.session && !allUploaded() && doneCount > 0 && p.length > 1 && !v.checkpoint) {
       stageActions.append(h('button', { class: 'btn ghost small', type: 'button', onclick: analyzePartial }, 'Разобрать то, что есть'));
     }
   }
@@ -1901,7 +1937,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     if (t.status === 'processing') head.append(h('span', { class: 'chip pulse' }, 'расшифровываю…'));
     if (t.status === 'error') head.append(h('span', { class: 'chip bad' }, 'ошибка'));
     head.append(h('span', { class: 'spacer' }));
-    if (!demo && t.status !== 'processing' && !(isFree && t.source && t.source !== 'микрофон')) {
+    if (!demo && !v.checkpoint && t.status !== 'processing' && !(isFree && t.source && t.source !== 'микрофон')) {
       head.append(h('button', { class: 'btn ghost small', type: 'button', onclick: () => rerecord(i) }, icon('redo'), 'Перезаписать'));
     }
     el.append(head);
@@ -2011,7 +2047,9 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       afterBox.replaceChildren(h('a', { class: 'btn ghost', href: freshHref() }, 'Выполнить упражнение самому'));
       return;
     }
-    if (done) {
+    if (done && v.checkpoint) {
+      setNextAction(backHref, 'К команде и динамике среза');
+    } else if (done) {
       setNextAction(v.programDay ? (v.groupId ? `#/groups/${v.groupId}` : '#/program') : freshHref(), v.programDay ? 'К программе дня' : (v.exId === 'coach' ? 'Следующий вопрос' : isFree ? 'Новая запись' : 'Ещё раз с новой темой'));
       if (v.exId === 'coach' && !v.programDay) setNextAction('#/ex/coach', 'Следующий вопрос');
       if (v.programDay) {
@@ -2037,7 +2075,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       try {
         await api(`/api/sessions/${sess.id}`, { method: 'DELETE' });
         toast('Удалено');
-        location.hash = v.programDay ? '#/program' : '#/history';
+        location.hash = v.checkpoint ? backHref : v.programDay ? '#/program' : '#/history';
       } catch (e) { toast(e.message); }
     }));
     afterBox.replaceChildren();

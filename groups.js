@@ -69,6 +69,11 @@ window.TrainerGroups = (() => {
     const expandedResults = new Set();
     let avatarData = null, avatarBusy = false, avatarError = '', avatarMessage = '', avatarOpen = false;
     let avatarDraft = null;
+    const seasonForm = { start: '', weeks: 0, error: '', cancelArmed: false };
+    const season = () => window.TrainerSeason || null;
+    const seasonTools = () => ({ avatar, nameOf, route: groupRoute, pending, expanded: expandedResults,
+      onCheckpoint: openCheckpoint, onStart: startSeason, onCancel: cancelSeason,
+      onForm: (patch) => { Object.assign(seasonForm, patch, { error: '' }); } });
     let avatarControls = [], avatarPreview = null, avatarPreviewLabel = null, avatarSave = null, avatarStatus = null;
     const avatarEndpoint = () => `${groupPath(gid)}/avatar`;
     const avatarChoices = () => list(avatarData && avatarData.characters).filter((item) =>
@@ -231,6 +236,7 @@ window.TrainerGroups = (() => {
         h('div', { class: 'groups-card-top' }, h('h3', null, group.name), h('span', { class: `chip ${group.is_leader ? 'good' : ''}` }, group.is_leader ? 'Вы руководитель' : group.joined ? 'Вы участвуете' : 'Просмотр владельца')),
         h('div', { class: 'groups-card-tags' }, profileLabel(group) ? h('span', { class: 'small soft' }, profileLabel(group)) : null,
           group.demonstration ? h('span', { class: 'groups-demo-label' }, 'Демо-результаты') : null,
+          season() ? season().cardBadge(group) : null,
           group.is_selected || data.current_group_id === group.id ? h('span', { class: 'chip good' }, 'Выбрана для программы дня') : null),
         h('p', { class: 'soft' }, 'Руководитель: ', nameOf(group.leader)),
         standingsPreview(group),
@@ -240,6 +246,7 @@ window.TrainerGroups = (() => {
       const preview = group.standings_preview;
       if (!preview) return h('p', { class: 'small soft groups-card-preview-empty' }, 'Рейтинг доступен внутри группы.');
       const top = list(preview.top).slice(0, 3), self = preview.self, gap = preview.gap_to_leader;
+      const seasonWeek = preview.mode === 'season';
       let selfLabel = '';
       if (preview.has_results && self) {
         const place = Number.isInteger(self.rank) && self.rank > 0 ? self.rank : null;
@@ -250,13 +257,14 @@ window.TrainerGroups = (() => {
         }
       } else if (!self && group.joined === false) selfLabel = 'Вы не участвуете';
       return h('div', { class: 'groups-card-preview' },
-        h('div', { class: 'groups-card-preview-heading' }, h('span', null, 'Рейтинг недели'), h('span', { class: 'small soft' }, 'из 100')),
+        h('div', { class: 'groups-card-preview-heading' }, h('span', null, seasonWeek ? 'Баллы недели' : 'Рейтинг недели'),
+          h('span', { class: 'small soft' }, seasonWeek ? 'сезон' : 'из 100')),
         preview.has_results && top.length ? h('ol', { class: 'groups-card-standings' }, top.map((person) => h('li', null,
           h('span', { class: 'groups-card-place num', 'aria-label': `Место: ${person.rank || '—'}` }, person.rank || '—'),
           avatar(person, 'groups-card-avatar'),
           h('span', { class: 'groups-card-person' }, h('span', null, nameOf(person), person.is_self ? h('span', { class: 'groups-card-person-self' }, ' · вы') : null),
             person.demonstration ? h('span', { class: 'groups-card-preview-demo' }, 'Демо') : null),
-          h('span', { class: 'groups-card-rating num', 'aria-label': Number.isFinite(person.rating) ? `${rating(person.rating)} из 100` : 'Рейтинг пока не рассчитан' }, Number.isFinite(person.rating) ? rating(person.rating) : '—'))))
+          h('span', { class: 'groups-card-rating num', 'aria-label': Number.isFinite(person.rating) ? (seasonWeek ? `Баллы недели: ${rating(person.rating)}` : `${rating(person.rating)} из 100`) : 'Рейтинг пока не рассчитан' }, Number.isFinite(person.rating) ? rating(person.rating) : '—'))))
           : h('p', { class: 'small soft groups-card-preview-empty' }, 'Пока нет результатов'),
         selfLabel ? h('p', { class: 'groups-card-self small' }, selfLabel) : null);
     }
@@ -310,10 +318,14 @@ window.TrainerGroups = (() => {
       const group = data, week = group.week || {}, daily = list(group.daily), today = daily.find((day) => day.today);
       const self = list(group.leaderboard).find((person) => person.is_self);
       const ownInvite = inviteLink || group.invite && group.invite.url;
+      const S = season(), tools = S ? seasonTools() : null;
+      if (S && (S.active(group) || S.upcoming(group))) return seasonPage(group, S, tools, S.active(group));
       return [crumb('Все группы'), header(group.name, `Руководитель: ${nameOf(group.leader)}. Участвует в соревновании наравне со всеми.`),
         error ? errorNotice(error) : null,
         h('div', { class: 'groups-context' }, profileLabel(group) ? h('span', { class: 'chip' }, profileLabel(group)) : null,
           h('p', { class: 'small soft' }, 'Задания и результаты этой группы учитываются отдельно от других групп.')),
+        S && group.season && group.season.exists ? S.hero(group, tools) : null,
+        S && group.season && week.current !== false ? S.manage(group, tools, seasonForm) : null,
         group.joined ? groupAvatarPanel(group) : null,
         weekBar(group),
         group.demonstration && group.demo_note ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные результаты' },
@@ -347,6 +359,84 @@ window.TrainerGroups = (() => {
         group.joined && !group.is_leader ? h('details', { class: 'groups-leave' }, h('summary', null, 'Участие в группе'), h('p', { class: 'small soft' }, 'Вы сможете снова вступить по приглашению. Ваши личные занятия останутся в истории.'),
           h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: leaveGroup }, pending ? 'Выхожу…' : leaveArmed ? 'Подтвердить выход' : 'Выйти из группы')) : null,
       ];
+    }
+    function consentCard(group) {
+      return h('div', { class: 'card groups-consent' }, h('h2', null, 'Вы смотрите группу как владелец'), h('p', { class: 'soft' }, 'Чтобы выполнять общие задания и появиться в таблице, вступите в группу.'),
+        h('p', { class: 'small soft' }, joinNotice), h('button', { class: 'btn', type: 'button', disabled: pending || !group.invite || !group.invite.code, onclick: () => joinGroup(group.id, group.invite.code) }, pending ? 'Вступаю…' : 'Вступить и участвовать'));
+    }
+    function inviteCard(group) {
+      const ownInvite = inviteLink || group.invite && group.invite.url;
+      return h('article', { class: 'card groups-invite-card' }, sectionHeading('Пригласить в эту группу'),
+        h('p', { class: 'soft' }, 'Отправьте ссылку участникам: после входа они сразу окажутся в этой группе. Зарегистрированный человек использует свой профиль, новый проходит обычный вход в тренажёр.'),
+        ownInvite ? copyLink(ownInvite, 'Ссылка для вступления в эту группу', 'Ссылка добавляет именно в эту группу. Для знакомства в «Моём круге» есть отдельная ссылка.') : h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: makeInvite }, pending ? 'Готовлю ссылку…' : 'Получить ссылку группы'));
+    }
+    function teamList(group) {
+      const rows = list(group.leaderboard);
+      return h('article', { class: 'card groups-friends season-roster' }, sectionHeading('Команда', h('span', { class: 'small soft' }, `${count(rows.length)} ${plural(rows.length, 'участник', 'участника', 'участников')}`)),
+        rows.length ? h('ul', { class: 'groups-friend-list' }, rows.map((person) => h('li', null, avatar(person, 'groups-standing-avatar'),
+          h('span', { class: 'groups-person-name' }, nameOf(person), person.is_self ? h('span', { class: 'small soft' }, ' · вы') : null),
+          person.is_leader ? h('span', { class: 'small soft' }, 'Руководитель') : null)))
+          : h('p', { class: 'soft' }, 'Пока в группе никого нет. Отправьте участникам ссылку группы.'));
+    }
+    function seasonPage(group, S, tools, running) {
+      const week = group.week || {}, daily = list(group.daily), today = daily.find((day) => day.today);
+      const manager = group.is_leader || app.state && app.state.is_owner;
+      return [crumb('Все группы'), header(group.name, `Руководитель: ${nameOf(group.leader)}. Участвует в соревновании наравне со всеми.`),
+        error ? errorNotice(error) : null,
+        S.hero(group, tools),
+        running && !week.current ? weekBar(group) : null,
+        group.demonstration && group.demo_note ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные результаты' },
+          h('h2', null, 'Демо-результаты'), h('p', null, group.demo_note)) : null,
+        !group.joined ? consentCard(group) : null,
+        running ? S.score(group, tools) : null,
+        running && week.current ? S.podium(group, tools) : null,
+        running ? null : S.checkpoints(group, tools),
+        week.current && today ? todayCard(group, today, running ? 'season' : 'warmup') : null,
+        running ? S.checkpoints(group, tools) : null,
+        running ? S.battles(group) : null,
+        running ? S.board(group, tools) : teamList(group),
+        S.team(group, tools),
+        group.joined ? groupAvatarPanel(group) : null,
+        manager ? peoplePanel() : null,
+        running ? weekDays(group, daily) : null,
+        S.rules(running ? group : { ...group, rules: group.season.rules, score_policy: group.season.policy }, joinNotice),
+        manager ? inviteCard(group) : null,
+        S.manage(group, tools, seasonForm),
+        group.joined && !group.is_leader ? h('details', { class: 'groups-leave' }, h('summary', null, 'Участие в группе'), h('p', { class: 'small soft' }, 'Вы сможете снова вступить по приглашению. Ваши личные занятия останутся в истории.'),
+          h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: leaveGroup }, pending ? 'Выхожу…' : leaveArmed ? 'Подтвердить выход' : 'Выйти из группы')) : null,
+      ];
+    }
+    async function startSeason(choice) {
+      if (pending) return;
+      pending = true; seasonForm.error = ''; draw();
+      try {
+        data = await api(`${groupPath(gid)}/season`, { method: 'POST', body: { start: choice.start, weeks: choice.weeks } });
+        Object.assign(seasonForm, { start: '', weeks: 0, cancelArmed: false });
+        await syncState(data);
+        if (alive()) toast('Сезон запущен');
+      } catch (caught) { seasonForm.error = caught.message || 'Не удалось запустить сезон. Попробуйте ещё раз.'; }
+      pending = false; if (alive()) draw();
+    }
+    async function cancelSeason() {
+      if (pending) return;
+      if (!seasonForm.cancelArmed) { seasonForm.cancelArmed = true; draw(); return; }
+      pending = true; error = null; draw();
+      try {
+        data = await api(`${groupPath(gid)}/season/cancel`, { method: 'POST', body: {} });
+        seasonForm.cancelArmed = false;
+        await syncState(data);
+        if (alive()) toast('Сезон отменён');
+      } catch (caught) { error = caught; }
+      pending = false; if (alive()) draw();
+    }
+    async function openCheckpoint() {
+      if (pending) return;
+      pending = true; error = null; draw();
+      try {
+        const session = await api(`${groupPath(gid)}/season/checkpoint`, { method: 'POST', body: {} });
+        if (alive() && session && session.id) location.hash = `#/s/${enc(session.id)}`;
+      } catch (caught) { error = caught; }
+      pending = false; if (alive()) draw();
     }
     async function loadAvatar(preserveDraft = false) {
       const previous = avatarDraft;
@@ -554,13 +644,18 @@ window.TrainerGroups = (() => {
         h('p', { class: 'small soft' }, 'У соперников одинаковые условия. Словесный раунд длится 60 секунд и влияет на общий рейтинг. Другим участникам доступны общие результаты, записи и тексты остаются личными.'),
         h('a', { class: 'btn ghost', href: route }, week.current ? 'Открыть поединки' : 'Поединки этой недели', icon('arrow')));
     }
-    function todayCard(group, day) {
+    function todayCard(group, day, mode) {
       const tasks = list(day.tasks), done = tasks.filter((task) => task.done).length;
-      return h('article', { class: 'card groups-today' }, sectionHeading('Общие задания на сегодня', h('span', { class: 'chip num' }, `${done} из ${tasks.length}`)),
+      const policy = group.score_policy || {}, perTask = policy.task || 2;
+      const footer = mode === 'season'
+        ? done === tasks.length && tasks.length ? h('p', { class: 'groups-all-done' }, `Все задания выполнены: ${count(done * perTask)} баллов за день. Новые общие темы появятся завтра.`)
+          : h('p', { class: 'small soft' }, `Каждое задание с разбором тренера — ${count(perTask)} балла. Сегодня набрано ${count(day.season_points || 0)} из ${count(tasks.length * perTask)}. Полный день приближает бонус недели.`)
+        : mode === 'warmup' ? h('p', { class: 'small soft' }, 'Сезон ещё не начался: это разминка. Баллы сезона пойдут с понедельника, а разборы тренера доступны уже сейчас.')
+          : done === tasks.length && tasks.length ? h('p', { class: 'groups-all-done' }, 'Все пять заданий выполнены: 2 балла за регулярность. Новые общие темы появятся завтра.') : h('p', { class: 'small soft' }, 'Завершите все пять заданий с разбором тренера, чтобы получить 2 балла за регулярность. За неполный день баллы регулярности не начисляются.');
+      return h('article', { class: 'card groups-today' }, sectionHeading(mode === 'warmup' ? 'Разминка: задания на сегодня' : 'Общие задания на сегодня', h('span', { class: 'chip num' }, `${done} из ${tasks.length}`)),
         h('p', { class: 'soft' }, shortDate(day.date, true), '. Темы одинаковые для участников этой группы.'),
         group.joined ? h('button', { class: 'btn ghost groups-program', type: 'button', disabled: pending, onclick: () => selectProgram(group) }, pending ? 'Открываю…' : 'Программа этой группы', icon('arrow')) : null,
-        taskList(group, day, true),
-        done === tasks.length && tasks.length ? h('p', { class: 'groups-all-done' }, 'Все пять заданий выполнены: 2 балла за регулярность. Новые общие темы появятся завтра.') : h('p', { class: 'small soft' }, 'Завершите все пять заданий с разбором тренера, чтобы получить 2 балла за регулярность. За неполный день баллы регулярности не начисляются.'));
+        taskList(group, day, true), footer);
     }
     async function selectProgram(group) {
       if (pending) return;

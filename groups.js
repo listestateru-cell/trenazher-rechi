@@ -71,7 +71,8 @@ window.TrainerGroups = (() => {
     let avatarDraft = null;
     const seasonForm = { start: '', weeks: 0, error: '', cancelArmed: false };
     const season = () => window.TrainerSeason || null;
-    const seasonTools = () => ({ avatar, nameOf, route: groupRoute, pending, expanded: expandedResults,
+    const seasonBoard = { open: false };
+    const seasonTools = () => ({ avatar, nameOf, route: groupRoute, pending, expanded: expandedResults, board: seasonBoard,
       onCheckpoint: openCheckpoint, onStart: startSeason, onCancel: cancelSeason,
       onForm: (patch) => { Object.assign(seasonForm, patch, { error: '' }); } });
     let avatarControls = [], avatarPreview = null, avatarPreviewLabel = null, avatarSave = null, avatarStatus = null;
@@ -379,26 +380,25 @@ window.TrainerGroups = (() => {
           : h('p', { class: 'soft' }, 'Пока в группе никого нет. Отправьте участникам ссылку группы.'));
     }
     function seasonPage(group, S, tools, running) {
-      const week = group.week || {}, daily = list(group.daily), today = daily.find((day) => day.today);
+      const week = group.week || {};
       const manager = group.is_leader || app.state && app.state.is_owner;
+      // Порядок экрана задал владелец 14.11: сверху «Начать задание» и лампочка вызова, затем строка
+      // сезона, сразу «Чемпионство» с первыми тремя, свои баллы, срез и в конце битвы. Служебное — ниже.
       return [crumb('Все группы'), header(group.name, `Руководитель: ${nameOf(group.leader)}. Участвует в соревновании наравне со всеми.`),
         error ? errorNotice(error) : null,
+        S.actions(group, tools),
         S.hero(group, tools),
         running && !week.current ? weekBar(group) : null,
         group.demonstration && group.demo_note ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные результаты' },
           h('h2', null, 'Демо-результаты'), h('p', null, group.demo_note)) : null,
         !group.joined ? consentCard(group) : null,
+        running ? S.championship(group, tools) : teamList(group),
         running ? S.score(group, tools) : null,
-        running && week.current ? S.podium(group, tools) : null,
-        running ? null : S.checkpoints(group, tools),
-        week.current && today ? todayCard(group, today, running ? 'season' : 'warmup') : null,
-        running ? S.checkpoints(group, tools) : null,
-        running ? S.battles(group) : null,
-        running ? S.board(group, tools) : teamList(group),
+        S.checkpoints(group, tools),
+        running ? S.battles(group, tools) : null,
         S.team(group, tools),
         group.joined ? groupAvatarPanel(group) : null,
         manager ? peoplePanel() : null,
-        running ? weekDays(group, daily) : null,
         S.rules(running ? group : { ...group, rules: group.season.rules, score_policy: group.season.policy }, joinNotice),
         manager ? inviteCard(group) : null,
         S.manage(group, tools, seasonForm),

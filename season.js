@@ -35,35 +35,51 @@ window.TrainerSeason = (() => {
     if (season.status === 'finished' && !season.week_number) return 'Сезон завершён';
     return `Неделя ${season.week_number || season.current_week_number} из ${season.weeks}`;
   }
-  function weekStop(group, week, tools) {
-    const champions = list(week.podium).filter((person) => person.place === 1);
-    const result = week.state === 'past'
-      ? champions.length
-        ? h('span', { class: 'season-week-result' }, tools.avatar(champions[0], 'season-week-avatar'),
-          h('span', { class: 'season-week-champion' }, h('span', { class: 'season-week-tag' }, 'Чемпион'),
-            h('span', null, tools.nameOf(champions[0]), champions.length > 1 ? ` и ещё ${champions.length - 1}` : '')))
-        : h('span', { class: 'season-week-result soft small' }, 'Без результатов')
-      : h('span', { class: 'season-week-result soft small' }, week.state === 'current' ? 'Идёт сейчас' : 'Впереди');
-    const body = [h('span', { class: 'season-week-number' }, `Неделя ${week.number}`),
-      h('span', { class: 'season-week-dates small' }, week.label), result];
-    const state = { class: 'season-week', 'data-state': week.state, 'data-chosen': String(!!week.chosen) };
-    return week.state !== 'future' && week.has_results
-      ? h('li', state, h('a', { class: 'season-week-link', href: tools.route(group.id, week.state === 'current' ? null : week.start),
-        'aria-current': week.chosen ? 'true' : null }, body))
-      : h('li', state, h('div', { class: 'season-week-link' }, body));
-  }
-  function hero(group, tools) {
+  // Шапка сезона — одна строка дат. Ленту недель владелец убрал 14.11: «мы и так знаем, что это сезон».
+  function hero(group) {
     const season = group.season;
+    const dates = season.start && season.end ? `${longDay(season.start)} — ${longDay(season.end)}` : season.label || '';
     const note = season.status === 'upcoming'
-      ? `Первая неделя начнётся ${longDay(season.start)}. До старта можно пройти стартовый срез и размяться на заданиях дня: баллы начнут считаться с понедельника.`
-      : season.status === 'finished'
-        ? 'Результаты недель и срезы сохранены. Руководитель может запустить следующий сезон.'
-        : 'Каждая неделя — отдельный забег. В понедельник баллы обнуляются, а чемпион и призёры остаются в истории сезона.';
+      ? `${dates}. До старта можно пройти стартовый срез и размяться: баллы начнут считаться ${longDay(season.start)}.`
+      : season.status === 'finished' ? `${dates}. Результаты и срезы сохранены.` : null;
     return h('section', { class: 'card season-hero', 'data-status': season.status, 'aria-label': 'Командный сезон' },
       h('div', { class: 'season-hero-copy' },
-        h('p', { class: 'season-eyebrow' }, `Командный сезон · ${season.label}`),
-        h('h2', null, heroTitle(season)), h('p', { class: 'soft' }, note)),
-      h('ol', { class: 'season-weeks', 'aria-label': 'Недели сезона' }, list(season.timeline).map((week) => weekStop(group, week, tools))));
+        h('p', { class: 'season-eyebrow' }, 'Командный сезон'),
+        h('h2', null, season.status === 'active' ? dates : heroTitle(season)),
+        note ? h('p', { class: 'soft' }, note) : null));
+  }
+
+  // Верх экрана: одна кнопка «Начать задание» и лампочка вызова на битву.
+  // Описания упражнений здесь не нужны: участник жмёт кнопку и попадает в следующее задание дня.
+  function todayTasks(group) {
+    const day = list(group.daily).find((item) => item.today), tasks = list(day && day.tasks);
+    return { tasks, done: tasks.filter((task) => task.done).length, next: tasks.find((task) => !task.done) || null };
+  }
+  function lamp(group, tools) {
+    if (!active(group)) return null;
+    const waiting = list(group.season.battles && group.season.battles.waiting), lit = waiting.length > 0;
+    const label = !lit ? 'Битвы: вызовов пока нет'
+      : waiting.length === 1 ? `${tools.nameOf(waiting[0])} вызывает вас на битву` : `Вас вызывают на битву: ${waiting.map(tools.nameOf).join(', ')}`;
+    return h('a', { class: 'season-lamp', href: duelsRoute(group), 'data-lit': String(lit), 'aria-label': label, title: label },
+      icon('bulb'), lit ? h('span', { class: 'season-lamp-count num', 'aria-hidden': 'true' }, whole(waiting.length)) : null);
+  }
+  function actions(group, tools) {
+    if (!group.joined || !group.week || !group.week.current || !(active(group) || upcoming(group))) return null;
+    const { tasks, done, next } = todayTasks(group);
+    const waiting = active(group) ? list(group.season.battles && group.season.battles.waiting) : [];
+    const progress = `${upcoming(group) ? 'Разминка · ' : ''}сегодня ${whole(done)} из ${whole(tasks.length)}`;
+    const start = next
+      ? h('a', { class: 'btn season-start', href: next.session_id ? `#/s/${enc(next.session_id)}` : `#/ex/${enc(next.exercise)}?program=1&group=${enc(group.id)}` },
+        h('span', { class: 'season-start-copy' }, h('strong', null, next.session_id ? 'Продолжить задание' : 'Начать задание'), h('span', { class: 'small' }, progress)),
+        icon('arrow'))
+      : h('div', { class: 'season-start season-start-done', role: 'status' },
+        h('span', { class: 'season-start-copy' }, h('strong', null, tasks.length ? 'Задания на сегодня выполнены' : 'Заданий на сегодня нет'),
+          h('span', { class: 'small' }, tasks.length ? `${whole(done)} из ${whole(tasks.length)} · новые завтра` : 'Загляните завтра')));
+    return h('section', { class: 'season-actions', 'aria-label': 'Главное на сегодня' },
+      h('div', { class: 'season-actions-row' }, start, lamp(group, tools)),
+      waiting.length ? h('a', { class: 'season-call', href: duelsRoute(group), role: 'status' },
+        h('span', null, waiting.length === 1 ? `${tools.nameOf(waiting[0])} вызывает вас на битву` : `Вас вызывают на битву: ${waiting.map(tools.nameOf).join(', ')}`),
+        h('strong', null, 'Принять'), icon('arrow')) : null);
   }
 
   function dayStrip(group) {
@@ -91,7 +107,6 @@ window.TrainerSeason = (() => {
     const mine = own.season, daily = mine.daily, fights = mine.battles;
     const steps = list(policy.full_day_bonus), battle = policy.battle || {};
     const total = list(group.leaderboard).length;
-    const waiting = list(group.season.battles && group.season.battles.waiting);
     // Три кольца недели, как в «Фитнесе»: у каждой части свой потолок, а не общий максимум.
     const taskLimit = (policy.task || 2) * (list(group.daily).reduce((sum, item) => sum + (list(item.tasks).length || 5), 0) || 35);
     const bonusLimit = steps.reduce((best, step) => Math.max(best, step.bonus || 0), 0) || 30;
@@ -107,8 +122,12 @@ window.TrainerSeason = (() => {
           'aria-label': `Задания ${whole(daily.task_points)} из ${whole(taskLimit)}, бонус ${whole(daily.bonus)} из ${whole(bonusLimit)}, битвы ${whole(fights.points)} из ${whole(battleLimit)}` },
         ring('tasks', daily.task_points, taskLimit), ring('bonus', daily.bonus, bonusLimit), ring('battles', fights.points, battleLimit)),
         h('div', { class: 'season-total' }, h('strong', { class: 'num' }, whole(mine.total)),
-          h('span', { class: 'soft' }, `${plural(mine.total, 'балл', 'балла', 'баллов')} из ${whole(policy.maximum)} возможных`))),
-      h('div', { class: 'season-tiles' },
+          h('span', { class: 'soft' }, `${plural(mine.total, 'балл', 'балла', 'баллов')} из ${whole(policy.maximum)} возможных`)),
+        h('ul', { class: 'season-ring-legend' },
+          h('li', { 'data-part': 'tasks' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания', h('strong', { class: 'num' }, whole(daily.task_points))),
+          h('li', { 'data-part': 'bonus' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Бонус', h('strong', { class: 'num' }, whole(daily.bonus))),
+          h('li', { 'data-part': 'battles' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Битвы', h('strong', { class: 'num' }, whole(fights.points))))),
+      h('details', { class: 'season-more' }, h('summary', null, 'Из чего складываются баллы'), h('div', { class: 'season-tiles' },
         h('article', { class: 'season-tile', 'data-part': 'tasks' },
           h('h3', null, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'Задания дня', h('strong', { class: 'num' }, whole(daily.task_points))),
           dayStrip(group),
@@ -124,34 +143,7 @@ window.TrainerSeason = (() => {
             h('div', null, h('dt', null, 'Победы'), h('dd', { class: 'num' }, whole(fights.wins))),
             h('div', null, h('dt', null, 'Ничьи'), h('dd', { class: 'num' }, whole(fights.draws))),
             h('div', null, h('dt', null, 'Поражения'), h('dd', { class: 'num' }, whole(fights.losses)))),
-          h('p', { class: 'small soft' }, `Сыграно ${whole(fights.played)} из ${whole(Math.max(0, total - 1))}. Победа — ${whole(battle.win)}, ничья — ${whole(battle.draw)}, поражение — ${whole(battle.loss)}.`))),
-      waiting.length && group.week && group.week.current ? h('p', { class: 'season-waiting', role: 'status' },
-        h('span', { class: 'season-waiting-people' }, waiting.slice(0, 3).map((person) => tools.avatar(person, 'season-waiting-avatar'))),
-        h('span', null, waiting.length === 1 ? `${tools.nameOf(waiting[0])} ждёт вас в битве.` : `Вас ждут в битве: ${waiting.map(tools.nameOf).join(', ')}.`),
-        h('a', { class: 'btn', href: duelsRoute(group) }, 'Принять битву', icon('arrow'))) : null);
-  }
-
-  function podium(group, tools) {
-    const previous = group.season.previous_week;
-    if (!previous) {
-      return group.season.status === 'active' && group.season.current_week_number === 1 && group.week && group.week.current
-        ? h('section', { class: 'card season-podium season-podium-empty' }, h('h2', null, 'Первый чемпион — в понедельник'),
-          h('p', { class: 'soft' }, 'Неделя закончится в воскресенье в 23:59. Тот, кто наберёт больше всех баллов, станет чемпионом недели; здесь появятся три призёра.'))
-        : null;
-    }
-    const titles = ['Чемпион недели', 'Второе место', 'Третье место'];
-    return h('section', { class: 'card season-podium', 'aria-label': `Итоги недели ${previous.number}` },
-      heading(`Итоги недели ${previous.number}`, h('span', { class: 'small soft' }, previous.label)),
-      h('ol', { class: 'season-stage' }, [1, 2, 3].map((place) => {
-        const people = list(previous.podium).filter((person) => person.place === place);
-        return h('li', { class: 'season-stage-step', 'data-place': place, 'data-empty': String(!people.length) },
-          h('div', { class: 'season-stage-people' }, people.length ? people.map((person) => h('div', { class: 'season-stage-person' },
-            tools.avatar(person, 'season-stage-avatar'),
-            h('strong', null, tools.nameOf(person), person.is_self ? h('span', { class: 'season-you' }, ' · вы') : null),
-            h('span', { class: 'num small soft' }, points(person.total)))) : null),
-          h('div', { class: 'season-stage-block' }, h('span', { class: 'season-stage-place num' }, place), h('span', { class: 'small' }, titles[place - 1])));
-      })),
-      h('a', { class: 'groups-award-link', href: tools.route(group.id, previous.start) }, `Все результаты недели ${previous.number}`, icon('arrow')));
+          h('p', { class: 'small soft' }, `Сыграно ${whole(fights.played)} из ${whole(Math.max(0, total - 1))}. Победа — ${whole(battle.win)}, ничья — ${whole(battle.draw)}, поражение — ${whole(battle.loss)}.`)))));
   }
 
   function trackStep(item) {
@@ -172,7 +164,7 @@ window.TrainerSeason = (() => {
     const current = view.current, items = list(view.own), seconds = view.seconds || 60;
     return h('section', { class: 'card season-checkpoint', 'aria-label': 'Срез команды' },
       heading('Срез', h('span', { class: 'chip' }, 'Видите только вы')),
-      h('p', { class: 'soft' }, `Один текст и один вопрос для всей команды: ${seconds} секунд на пересказ и ${seconds} на ответ. Баллов срез не даёт. Он показывает, как меняется ваша оценка тренера от недели к неделе.`),
+      h('p', { class: 'soft' }, `Пересказ текста и ответ на вопрос, по ${seconds} секунд. Баллов не даёт: показывает, как растёт ваша оценка тренера.`),
       current ? h('div', { class: 'season-checkpoint-call' },
         h('div', null, h('strong', null, current.title),
           h('p', { class: 'small soft' }, `Открыт по ${longDay(current.closes)} включительно. Проходится один раз, занимает около трёх минут.`)),
@@ -232,37 +224,66 @@ window.TrainerSeason = (() => {
         h('span', { 'data-part': 'bonus', style: `width:${share(daily.bonus || 0, maximum)}` }),
         h('span', { 'data-part': 'battles', style: `width:${share(fights.points || 0, maximum)}` }))),
     h('span', { class: 'groups-standing-chevron', 'aria-hidden': 'true' }));
-    return [h('tr', { class: `groups-standing-row${person.is_self ? ' groups-self' : ''}`, 'data-participant': key },
+    return [h('tr', { class: `groups-standing-row${person.is_self ? ' groups-self' : ''}${index >= TOP ? ' season-extra' : ''}`, 'data-participant': key },
       h('td', { class: 'groups-rank num' }, h('span', { class: 'groups-rank-badge season-place', 'data-place': mine.total > 0 && person.rank <= 3 ? person.rank : '' }, person.rank || '—')),
       h('th', { scope: 'row', class: 'groups-ranking-person' }, trigger),
       h('td', { class: 'groups-ranking-points num', 'aria-label': points(mine.total) }, whole(mine.total))), detail];
   }
-  function board(group, tools) {
-    const rows = list(group.leaderboard);
-    return h('article', { class: 'card groups-leaderboard season-board' },
-      heading(group.week && group.week.current ? 'Таблица недели' : 'Итоговая таблица недели',
-        h('span', { class: 'small soft' }, `${whole(rows.length)} ${plural(rows.length, 'участник', 'участника', 'участников')}`)),
-      h('p', { class: 'small soft season-legend' },
-        h('span', { 'data-part': 'tasks' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'задания'),
-        h('span', { 'data-part': 'bonus' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'бонус'),
-        h('span', { 'data-part': 'battles' }, h('span', { class: 'season-dot', 'aria-hidden': 'true' }), 'битвы'),
-        h('span', null, 'Нажмите на участника, чтобы увидеть разбивку.')),
+  // «Чемпионство»: сразу видно первых трёх, остальные раскрываются по кнопке. Видят все участники.
+  const TOP = 3;
+  function lastWeek(group, tools) {
+    const previous = group.season.previous_week;
+    if (!previous || !group.week || !group.week.current) return null;
+    const people = [1, 2, 3].flatMap((place) => list(previous.podium).filter((person) => person.place === place));
+    return h('a', { class: 'season-last-week', href: tools.route(group.id, previous.start), 'aria-label': `Итоги прошлой недели, ${previous.label}` },
+      h('span', { class: 'small soft' }, 'Прошлая неделя'),
+      people.length ? h('span', { class: 'season-last-people' }, people.slice(0, 3).map((person) => h('span', { class: 'season-last-person', 'data-place': person.place },
+        tools.avatar(person, 'season-last-avatar'), h('span', null, tools.nameOf(person)))))
+        : h('span', { class: 'small' }, 'без результатов'),
+      icon('arrow'));
+  }
+  function championship(group, tools) {
+    const rows = list(group.leaderboard), current = group.week && group.week.current;
+    const state = tools.board || { open: false }, extra = Math.max(0, rows.length - TOP);
+    const body = rows.flatMap((person, index) => {
+      const [row, detail] = boardRows(group, person, index, tools);
+      if (index >= TOP) { row.hidden = !state.open; if (!state.open) detail.hidden = true; }
+      return [row, detail];
+    });
+    const toggle = extra ? h('button', { class: 'btn ghost season-board-toggle', type: 'button', 'aria-expanded': String(!!state.open), onclick: () => {
+      state.open = !state.open;
+      body.forEach((node, index) => {
+        if (Math.floor(index / 2) < TOP) return;
+        if (index % 2 === 0) node.hidden = !state.open;
+        else if (!state.open) node.hidden = true;
+      });
+      toggle.setAttribute('aria-expanded', String(state.open));
+      toggle.replaceChildren(state.open ? 'Свернуть' : `Показать всех · ${whole(rows.length)}`);
+    } }, state.open ? 'Свернуть' : `Показать всех · ${whole(rows.length)}`) : null;
+    return h('article', { class: 'card groups-leaderboard season-board season-championship', 'aria-label': 'Чемпионство' },
+      heading(current ? 'Чемпионство' : 'Итоги недели',
+        h('span', { class: 'small soft' }, current ? 'счёт до воскресенья' : (group.week && group.week.label) || '')),
       rows.length ? h('table', { class: 'groups-ranking groups-standings season-standings' },
         h('caption', { class: 'groups-sr-only' }, 'Место, участник и баллы недели. Разбивка раскрывается по нажатию на имя.'),
         h('thead', null, h('tr', null, h('th', { scope: 'col', class: 'groups-rank-col', 'aria-label': 'Место' }, '№'),
           h('th', { scope: 'col' }, 'Участник'), h('th', { scope: 'col', class: 'groups-numeric-col' }, 'Баллы'))),
-        h('tbody', null, rows.flatMap((person, index) => boardRows(group, person, index, tools))))
-        : h('p', { class: 'soft' }, 'Таблица появится, когда в группу вступят участники.'));
+        h('tbody', null, body))
+        : h('p', { class: 'soft' }, 'Рейтинг появится, когда в группу вступят участники.'),
+      toggle, lastWeek(group, tools));
   }
 
-  function battles(group) {
+  // Битвы — в конце экрана: кто вызвал вас и куда идти, чтобы вызвать самому.
+  function battles(group, tools) {
     const view = group.season.battles, policy = (group.score_policy || {}).battle || {};
-    return h('article', { class: 'card groups-duels-card' },
-      h('div', { class: 'groups-duels-heading' }, icon('scales'), h('h2', null, 'Битвы недели')),
-      h('p', { class: 'soft' }, 'С каждым участником команды — одна битва в неделю, в любой день. Обоим достаётся одно слово и одна минута: побеждает тот, у кого больше подходящих слов без повторов.'),
-      h('p', { class: 'small soft' }, view ? `Сыграно ${whole(view.played)} из ${whole(view.total)}. ` : '',
-        `Победа — ${whole(policy.win ?? 10)}, ничья — ${whole(policy.draw ?? 5)}, поражение — ${whole(policy.loss ?? 2)}. Записи и списки слов остаются личными.`),
-      h('a', { class: 'btn ghost', href: duelsRoute(group) }, group.week && group.week.current ? 'К битвам' : 'Битвы этой недели', icon('arrow')));
+    const current = !!(group.week && group.week.current), waiting = current ? list(view && view.waiting) : [];
+    return h('article', { class: 'card groups-duels-card season-battles' },
+      h('div', { class: 'groups-duels-heading' }, icon('scales'), h('h2', null, 'Битвы'),
+        view ? h('span', { class: 'small soft season-battles-count' }, `сыграно ${whole(view.played)} из ${whole(view.total)}`) : null),
+      waiting.length ? h('ul', { class: 'season-challenges', 'aria-label': 'Вас вызвали на битву' }, waiting.map((person) => h('li', null,
+        tools.avatar(person, 'season-waiting-avatar'), h('span', null, h('strong', null, tools.nameOf(person)), ' вызывает вас')))) : null,
+      h('p', { class: 'small soft' }, `Одно слово, одна минута. Победа — ${whole(policy.win ?? 10)}, ничья — ${whole(policy.draw ?? 5)}, поражение — ${whole(policy.loss ?? 2)}.`),
+      h('a', { class: waiting.length ? 'btn season-battles-go' : 'btn ghost season-battles-go', href: duelsRoute(group) },
+        waiting.length ? 'Принять битву' : current ? 'Вызвать на битву' : 'Битвы этой недели', icon('arrow')));
   }
 
   function pointsTable(policy) {
@@ -323,9 +344,9 @@ window.TrainerSeason = (() => {
     const badge = group.season_badge;
     if (!badge) return null;
     const text = badge.status === 'upcoming' ? `Сезон с ${shortDay(badge.start)}` : badge.status === 'finished' ? 'Сезон завершён'
-      : `Сезон · неделя ${badge.week || '—'} из ${badge.weeks}`;
+      : badge.end ? `Сезон до ${shortDay(badge.end)}` : 'Командный сезон';
     return h('span', { class: `chip season-chip${badge.status === 'active' ? ' good' : ''}` }, text);
   }
 
-  return { active, upcoming, hero, score, podium, checkpoints, team, board, battles, rules, manage, cardBadge, points };
+  return { active, upcoming, hero, actions, score, checkpoints, team, championship, board: championship, battles, rules, manage, cardBadge, points };
 })();

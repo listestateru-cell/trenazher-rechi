@@ -77,7 +77,7 @@ window.TrainerDuels = (() => {
     let data = null, error = '', destroyed = false, loading = false, pending = false;
     let armedId = null, session = null, rec = null, blob = null, uploadRequest = null, uploadBusy = false;
     let recording = false, starting = false, recordingContext = null, recordingStream = null, armedStream = null;
-    let serverMs = Date.now(), clockAt = performance.now(), pollTimer = 0, ticker = 0, downloadUrl = '';
+    let serverMs = Date.now(), clockAt = performance.now(), pollTimer = 0, ticker = 0, downloadUrl = '', shownSignature = '';
     let focus = params && params.get('match'), privateSession = null;
     let recordControl = null, recordMatchId = null;
     const hasVinyl = !!(window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control);
@@ -345,9 +345,19 @@ window.TrainerDuels = (() => {
       } catch (caught) { error = caught.message; }
       loading = false;
       if (alive()) {
-        if (!Array.from(root.querySelectorAll('audio')).some((audio) => !audio.paused)) draw();
+        // Опрос идёт каждые несколько секунд. Если сервер ответил тем же, экран не трогаем: полная
+        // перерисовка пересоздавала карточки и аватарки, и на телефоне они дёргались (жалоба 14.11).
+        // Время на экране ведёт paintTimer, ему перерисовка не нужна.
+        const next = pollSignature();
+        if (next !== shownSignature && !Array.from(root.querySelectorAll('audio')).some((audio) => !audio.paused)) { shownSignature = next; draw(); }
         schedule();
       }
+    }
+    function pollSignature() {
+      // Внутри load() может сброситься armedId, поэтому местное состояние тоже входит в подпись.
+      // server_now сервер кладёт и в шапку, и в каждую встречу — его выкидываем на любой глубине.
+      try { return JSON.stringify([data, session, error, armedId, !!blob, recording, starting, pending], (key, value) => key === 'server_now' ? undefined : value); }
+      catch (_) { return String(Math.random()); }
     }
     function schedule() {
       clearTimeout(pollTimer);

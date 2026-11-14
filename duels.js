@@ -77,7 +77,11 @@ window.TrainerDuels = (() => {
     let data = null, error = '', destroyed = false, loading = false, pending = false;
     let armedId = null, session = null, rec = null, blob = null, uploadRequest = null, uploadBusy = false;
     let recording = false, starting = false, recordingContext = null, recordingStream = null, armedStream = null;
-    let serverMs = Date.now(), clockAt = performance.now(), pollTimer = 0, ticker = 0, downloadUrl = '', shownSignature = '';
+    let clockOffset = Date.now() - performance.now(), pollTimer = 0, ticker = 0, downloadUrl = '', shownSignature = '';
+    // Сессия записи, взятая заранее во время отсчёта: в момент старта запись начинается без запроса к серверу.
+    let prepared = null, preparing = null, prepareTriedAt = -Infinity;
+    const clockSamples = [];
+    const LATE_START_MS = 15000;
     let focus = params && params.get('match'), privateSession = null;
     let recordControl = null, recordMatchId = null;
     const hasVinyl = !!(window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control);
@@ -91,8 +95,17 @@ window.TrainerDuels = (() => {
       recordTitle, recordTopic, recordMount, recordClock, recordCaption, recordCanvas) : null;
     const root = h('section', { class: 'duels-view stack' }, intro, recordPanel, contents);
     const alive = () => !destroyed && ctx.alive();
-    const now = () => serverMs + performance.now() - clockAt;
-    const setClock = (stamp) => { const value = Date.parse(stamp); if (Number.isFinite(value)) { serverMs = value; clockAt = performance.now(); } };
+    const now = () => performance.now() + clockOffset;
+    // Часы сервера с поправкой на дорогу: ответ шёл половину круга. Из последних замеров берём самый
+    // быстрый — у него меньше всего погрешность. Раньше время ответа не учитывалось, и телефон отставал.
+    const setClock = (stamp, sentAt) => {
+      const value = Date.parse(stamp);
+      if (!Number.isFinite(value)) return;
+      const at = performance.now(), rtt = Number.isFinite(sentAt) ? Math.max(0, at - sentAt) : 2000;
+      clockSamples.push({ offset: value + rtt / 2 - at, rtt });
+      if (clockSamples.length > 8) clockSamples.shift();
+      clockOffset = clockSamples.reduce((best, sample) => sample.rtt < best.rtt ? sample : best).offset;
+    };
     const closeOwnMic = () => {
       recordMeter?.stop(); recordCanvas.hidden = true;
       const streams = new Set([armedStream, recordingStream].filter(Boolean));
@@ -207,10 +220,23 @@ window.TrainerDuels = (() => {
       const opponent = (match.players || []).find(player => !player.is_self);
       recordTitle.textContent = opponent ? `Соперник: ${opponent.name}` : 'Запись поединка';
       recordTopic.textContent = match.topic ? `Общее слово: ${match.topic}` : 'Слово откроется в момент старта.';
-      recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически' : canResume ? 'Включить микрофон и продолжить' : armed ? 'Готов · ждём общего старта' : 'Готов · проверить микрофон';
+      // После старта «ждём общего старта» вводило в заблуждение: человек не понимал, что минута уже идёт.
+      const started = match.start_at && now() >= Date.parse(match.start_at);
+      recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически'
+        : canResume ? 'Включить микрофон и продолжить'
+          : armed && started ? (error ? 'Запись не началась · дождитесь конца минуты и предложите повтор' : 'Начинаем запись…')
+            : armed && match.status === 'countdown' ? 'Готов · общий старт через несколько секунд'
+              : armed ? waitingCaption(opponent) : 'Готов · проверить микрофон';
       recordClock.hidden = !(['countdown', 'live'].includes(match.status) || actualRecording);
       recordClock.dataset.duelClock = match.id;
       recordCanvas.hidden = !actualRecording;
+    }
+    // Старт только когда оба на странице: подсказка говорит, кого и почему ждём.
+    function waitingCaption(opponent) {
+      if (!opponent) return 'Готов · ждём соперника';
+      if (opponent.online === false) return opponent.ready ? 'Соперник отошёл · позвали его в Telegram, старт сразу, как вернётся'
+        : 'Соперника нет на странице · позвали его в Telegram';
+      return opponent.ready ? 'Оба готовы · начинаем…' : 'Ждём, когда соперник нажмёт «Готов»';
     }
     function selectRecording(match) {
       focus = match.id; draw();
@@ -332,11 +358,12 @@ window.TrainerDuels = (() => {
       if (loading || !alive()) return;
       loading = true;
       try {
+        const sentAt = performance.now();
         data = await api(path(gid) + (week ? `?week=${enc(week)}` : ''));
-        setClock(data.server_now);
+        setClock(data.server_now, sentAt);
         if (armedId) {
           const match = data.matches.find((item) => item.id === armedId);
-          if (match && !starting && !recording && !blob && (demonstration(match) || ['expired', 'cancelled', 'done', 'complete'].includes(match.status))) { armedId = null; closeOwnMic(); }
+          if (match && !starting && !recording && !blob && (demonstration(match) || ['expired', 'cancelled', 'done', 'complete'].includes(match.status))) { armedId = null; prepared = null; closeOwnMic(); }
         }
         if (session && !recording && !blob && (session.analysis || {}).status !== 'done') {
           const fresh = await api(`/api/sessions/${enc(session.id)}`);
@@ -381,7 +408,7 @@ window.TrainerDuels = (() => {
           }
           return;
         }
-        armedId = match.id; focus = match.id; session = null; privateSession = null;
+        armedId = match.id; focus = match.id; session = null; privateSession = null; prepared = null;
       } catch (caught) {
         error = caught.message;
         let confirmed = false;
@@ -403,7 +430,7 @@ window.TrainerDuels = (() => {
       pending = true; error = ''; draw();
       try {
         await api(`${path(gid)}/${enc(match.id)}/${verb}`, { method: 'POST', body: {} });
-        if (verb === 'cancel') { armedId = null; closeOwnMic(); }
+        if (verb === 'cancel') { armedId = null; prepared = null; closeOwnMic(); }
         if (verb === 'reset') focus = match.id;
       } catch (caught) { error = caught.message; }
       pending = false; if (alive()) await load();
@@ -420,25 +447,48 @@ window.TrainerDuels = (() => {
         } else node.textContent = now() < start ? `Старт через ${Math.max(0, Math.ceil((start - now()) / 1000))}` : `${Math.max(0, Math.ceil((end - now()) / 1000))} с`;
       });
       const match = data && data.matches.find((item) => item.id === armedId);
+      // Заранее берём сессию во время отсчёта; после неудачи повторяем не чаще раза в секунду.
+      if (match && !demonstration(match) && !recording && !session && !prepared && match.start_at && now() < Date.parse(match.start_at)
+        && performance.now() - prepareTriedAt > 1000) prepareSession(match);
       if (match && !demonstration(match) && !recording && !starting && !session && now() >= Date.parse(match.start_at) && now() < Date.parse(match.end_at)) startRecording(match);
       if (recording && session && now() >= Date.parse(session.duel_end_at)) finishRecording();
+    }
+    function prepareSession(match) {
+      if (prepared && prepared.duel_id === match.id && prepared.duel_start_at === match.start_at) return Promise.resolve(prepared);
+      if (preparing) return preparing;
+      prepareTriedAt = performance.now();
+      const sentAt = performance.now();
+      preparing = api(`${path(gid)}/${enc(match.id)}/session`, { method: 'POST', body: {} })
+        .then((fresh) => { setClock(fresh.server_now, sentAt); if (armedId === match.id) prepared = fresh; return fresh; })
+        .catch(() => null)  // Не успели заранее — в момент старта startRecording попробует ещё раз и покажет причину.
+        .finally(() => { preparing = null; });
+      return preparing;
     }
     async function startRecording(match) {
       if (demonstration(match)) return;
       if (starting || recording || !mic.live()) return;
       starting = true;
       try {
-        session = await api(`${path(gid)}/${enc(match.id)}/session`, { method: 'POST', body: {} });
-        setClock(session.server_now);
+        let opened = prepared && prepared.duel_id === match.id && prepared.duel_start_at === match.start_at ? prepared : await prepareSession(match);
+        if (!opened) {
+          const sentAt = performance.now();
+          opened = await api(`${path(gid)}/${enc(match.id)}/session`, { method: 'POST', body: {} });
+          setClock(opened.server_now, sentAt);
+        }
+        session = opened; prepared = null;
         if (!alive()) { closeOwnMic(); return; }
-        if (Date.parse(session.duel_end_at) - now() < 58500) throw new Error('Связь задержала старт. Запись не началась; повторите встречу с согласия соперника.');
+        // Опоздание до 15 секунд не срывает встречу: запись идёт до конца общей минуты, просто короче.
+        if (now() - Date.parse(session.duel_start_at) > LATE_START_MS) {
+          throw new Error('Связь задержала старт больше чем на 15 секунд, запись не началась. Дождитесь конца минуты и предложите сопернику повтор.');
+        }
         recordingContext = window.TrainerDrafts && TrainerDrafts.context(); recordingStream = mic.stream;
         rec = new Recorder(mic.stream, { journal: {
           path: `/api/sessions/${session.id}/takes/0`, userId: (own(match) || {}).id, context: recordingContext,
           headers: { 'X-Duel-Nonce': session.duel_nonce },
         } }); rec.start(); recording = true; recordCanvas.hidden = false; recordMeter?.start();
         const actual = data.matches.find((item) => item.id === match.id);
-        if (actual) { actual.topic = session.topic; actual.status = 'live'; }
+        // В сессии, взятой во время отсчёта, слова нет: его принесёт ближайший опрос страницы.
+        if (actual) { if (session.topic) actual.topic = session.topic; actual.status = 'live'; }
       } catch (caught) { error = caught.message; closeOwnMic(); }
       starting = false; draw();
     }

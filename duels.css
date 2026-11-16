@@ -5,6 +5,16 @@
 .duel-player-status { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .duel-topic { font-size: 23px; line-height: 1.4; }
 .duel-selected { border-color: var(--accent); }
+.duel-task { margin: 0; line-height: 1.5; color: var(--ink-2); }
+.duel-insight { border-top: 1px solid var(--line); }
+.duel-insight h4 { margin: 16px 0 8px; font-size: 16px; }
+.duel-compare { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.duel-compare th, .duel-compare td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; font-weight: 400; overflow-wrap: anywhere; }
+.duel-compare thead th { font-size: 13px; color: var(--ink-2); }
+.duel-compare .num { text-align: right; width: 84px; }
+.duel-compare .duel-lead { font-weight: 700; color: var(--accent-ink); }
+.duel-advice { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--surface-2); line-height: 1.5; }
+.duel-scores { margin: 0; }
 .duel-clock { font-size: clamp(26px,7vw,42px); font-weight: 650; }
 .duel-recording { color: var(--bad-ink); }
 .duel-results { padding: 14px; border-radius: var(--radius-sm); background: var(--surface-2); display: grid; gap: 8px; }

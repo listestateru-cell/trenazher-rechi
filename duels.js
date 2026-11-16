@@ -1,9 +1,9 @@
 'use strict';
-/* Одновременная минута. Сроки, слово и зачёт определяет сервер. */
+/* Одновременная запись двух соперников. Сроки, формат, задание и зачёт определяет сервер. */
 window.TrainerDuels = (() => {
   const enc = encodeURIComponent;
   const names = { league: 'Встреча недели', semi: 'Полуфинал', semifinal: 'Полуфинал', final: 'Финал · 1–2 место', bronze: 'За 3 место', tiebreak: 'Дополнительная встреча', qualifier: 'Дополнительная встреча' };
-  const statuses = { waiting: 'Ожидает готовности', countdown: 'Обратный отсчёт', live: 'Идёт запись', processing: 'Тренер проверяет слова', done: 'Завершён', complete: 'Завершён', expired: 'Нужен повтор', cancelled: 'Не состоялся' };
+  const statuses = { waiting: 'Ожидает готовности', countdown: 'Обратный отсчёт', live: 'Идёт запись', processing: 'Тренер проверяет записи', done: 'Завершён', complete: 'Завершён', expired: 'Нужен повтор', cancelled: 'Не состоялся' };
   const path = (gid) => `/api/groups/${enc(gid)}/duels`;
   const finished = (match) => ['done', 'complete'].includes(match.status);
   const own = (match) => (match.players || []).find((player) => player.is_self);
@@ -11,11 +11,46 @@ window.TrainerDuels = (() => {
   const number = (value) => Number.isFinite(Number(value)) ? Number(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
   const avatar = (person) => window.TrainerProfiles ? TrainerProfiles.avatar(person, 'duel-person-avatar') : null;
   const identity = (person, className = 'duel-podium-identity') => h('span', { class: className }, avatar(person), h('strong', null, person.name || 'Участник'));
+  // Форматов пять. У встреч, сыгранных до их появления, формата в ответе сервера нет: это минута ассоциаций.
+  const speech = (item) => !!item && !!item.exercise && item.exercise !== 'sprint';
+  const format = (match) => match.format || { title: 'Ассоциации', topic_label: 'Слово', seconds: 60, task: '' };
+  const criteria = [['logic', 'Логика'], ['vocabulary', 'Словарный запас'], ['thinking_speed', 'Скорость мышления'], ['persuasiveness', 'Убедительность'], ['structure', 'Структура речи']];
+  const line = (item) => typeof item === 'string' ? item : item && (item.text || item.title) || '';
+
+  function speechResult(session, retry) {
+    const take = (session.takes || [])[0] || {}, analysis = session.analysis || {}, result = analysis.result || {};
+    const scores = analysis.status === 'done' && result.scores || null;
+    return h('article', { class: 'card duel-private stack' }, h('h2', null, 'Ваш результат'),
+      h('p', { class: 'soft' }, 'Задание: ', session.topic || '—'),
+      analysis.status !== 'done' ? h('p', { role: 'status' }, analysis.error || take.error || 'Тренер разбирает запись. Результат появится после разбора.') : null,
+      scores ? [h('p', null, `Сумма оценок тренера: ${criteria.reduce((sum, [key]) => sum + (Number(scores[key]) || 0), 0)} из 50`),
+        h('ul', { class: 'list duel-scores' }, criteria.map(([key, label]) => h('li', null, `${label}: ${number(scores[key])}`)))] : null,
+      result.verdict ? h('p', { class: 'soft' }, result.verdict) : null,
+      (result.strengths || []).length ? h('details', null, h('summary', null, 'Что получилось'), h('ul', { class: 'list' }, result.strengths.map((item) => h('li', null, line(item))))) : null,
+      (result.growth || []).length ? h('details', null, h('summary', null, 'Над чем поработать'), h('ul', { class: 'list' }, result.growth.map((item) => h('li', null, line(item))))) : null,
+      take.audio ? h('audio', { controls: true, preload: 'none', src: url(`/media/${enc(session.id)}/${enc(take.audio)}`), 'aria-label': 'Ваша запись битвы' }) : null,
+      take.text ? h('details', null, h('summary', null, 'Ваша расшифровка'), h('p', { class: 'duel-text' }, take.text)) : null,
+      retry && take.status === 'done' && analysis.status === 'error' ? h('button', { class: 'btn ghost', type: 'button', onclick: retry }, 'Повторить разбор') : null,
+      h('p', { class: 'small soft' }, 'Запись, текст и разбор видите вы и владелец тренажёра. Сопернику доступны только цифры: оценки, паузы, слова-паразиты и темп.'));
+  }
+  function insightCard(match) {
+    const data = match.insight, show = (value) => value == null ? '—' : number(value);
+    const heading = { win: 'За счёт чего вы выиграли', loss: 'Почему соперник выиграл', draw: 'Где вы разошлись' }[data.outcome] || 'Сравнение';
+    return h('details', { class: 'duel-insight' }, h('summary', null, 'Сравнение с соперником'),
+      h('table', { class: 'duel-compare' }, h('caption', { class: 'groups-sr-only' }, 'Ваши цифры и цифры соперника'),
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Показатель'), h('th', { scope: 'col', class: 'num' }, 'Вы'), h('th', { scope: 'col', class: 'num' }, 'Соперник'))),
+        h('tbody', null, (data.rows || []).map((row) => h('tr', null, h('th', { scope: 'row' }, row.label),
+          h('td', { class: `num${row.lead === 'own' ? ' duel-lead' : ''}` }, show(row.own)),
+          h('td', { class: `num${row.lead === 'other' ? ' duel-lead' : ''}` }, show(row.other)))))),
+      (data.reasons || []).length ? [h('h4', null, heading), h('ul', { class: 'list' }, data.reasons.map((reason) => h('li', null, reason)))] : null,
+      data.advice ? h('p', { class: 'duel-advice' }, h('strong', null, `Что потренировать: «${data.advice.title}». `), data.advice.why) : null);
+  }
 
   function judgement(session) {
     return ((session.analysis || {}).result || {}).word_judgement || null;
   }
   function privateResult(session, retry) {
+    if (speech(session)) return speechResult(session, retry);
     const take = (session.takes || [])[0] || {};
     const result = (session.analysis || {}).result || {};
     const words = judgement(session);
@@ -45,7 +80,7 @@ window.TrainerDuels = (() => {
     function draw() {
       if (stopped || !ctx.alive()) return;
       root.replaceChildren(...[h('a', { class: 'groups-back', href: gid ? `#/groups/${enc(gid)}/duels` : '#/history' }, icon('back'), 'К поединкам'),
-        h('h1', null, 'Минута ассоциаций'), error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
+        h('h1', null, speech(session) ? session.title || 'Битва' : 'Минута ассоциаций'), error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
         busy ? h('p', { role: 'status' }, 'Запускаю проверку…') : privateResult(session, retry)].filter(Boolean));
     }
     async function retry() {
@@ -86,13 +121,14 @@ window.TrainerDuels = (() => {
     let recordControl = null, recordMatchId = null;
     const hasVinyl = !!(window.TrainerSoloveyVinyl && TrainerSoloveyVinyl.control);
     const recordTitle = h('h2'), recordTopic = h('p', { class: 'duel-topic' }), recordMount = h('div'), recordCaption = h('p', { class: 'small soft' });
+    const recordTask = h('p', { class: 'duel-task', hidden: true });
     const dottedClock = window.TrainerDottedClock?.create({ value: '60', label: 'Секунд до конца поединка' });
     const recordClock = dottedClock ? dottedClock.el : h('div', { class: 'duel-clock num', role: 'timer', 'aria-label': 'Время поединка', hidden: true });
     recordClock.hidden = true;
     const recordCanvas = h('canvas', { class: 'level voice-light', 'aria-hidden': 'true', hidden: true });
     const recordMeter = typeof levelMeter === 'function' ? levelMeter(recordCanvas) : null;
     const recordPanel = hasVinyl ? h('section', { class: 'card solovey-recorder', hidden: true, 'aria-label': 'Запись поединка' },
-      recordTitle, recordTopic, recordMount, recordClock, recordCaption, recordCanvas) : null;
+      recordTitle, recordTask, recordTopic, recordMount, recordClock, recordCaption, recordCanvas) : null;
     const root = h('section', { class: 'duels-view stack' }, intro, recordPanel, contents);
     const alive = () => !destroyed && ctx.alive();
     const now = () => performance.now() + clockOffset;
@@ -137,7 +173,7 @@ window.TrainerDuels = (() => {
       syncRecordPanel(matches);
       const nodes = [
         h('a', { class: 'groups-back', href: `#/groups/${enc(gid)}` }, icon('back'), 'К группе'),
-        h('header', { class: 'groups-heading' }, h('div', { class: 'groups-heading-copy' }, h('p', { class: 'groups-eyebrow' }, 'Минута ассоциаций'),
+        h('header', { class: 'groups-heading' }, h('div', { class: 'groups-heading-copy' }, h('p', { class: 'groups-eyebrow' }, season ? 'Пять форматов · одно задание на двоих' : 'Минута ассоциаций'),
           h('h1', null, season ? 'Битвы недели' : 'Поединки недели'), h('p', { class: 'soft' }, data && data.group ? data.group.name : 'Общее слово · 60 секунд · без повторов')),
         action(loading ? 'Обновляю…' : 'Обновить', () => load(), loading || recording || starting)),
         error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
@@ -219,10 +255,12 @@ window.TrainerDuels = (() => {
         label: canResume ? 'Включить микрофон и продолжить' : 'Готов · проверить микрофон' });
       const opponent = (match.players || []).find(player => !player.is_self);
       recordTitle.textContent = opponent ? `Соперник: ${opponent.name}` : 'Запись поединка';
-      recordTopic.textContent = match.topic ? `Общее слово: ${match.topic}` : 'Слово откроется в момент старта.';
+      recordTask.hidden = !speech(match);
+      recordTask.textContent = speech(match) ? `${format(match).title}. ${format(match).task}` : '';
+      recordTopic.textContent = taskLine(match);
       // После старта «ждём общего старта» вводило в заблуждение: человек не понимал, что минута уже идёт.
       const started = match.start_at && now() >= Date.parse(match.start_at);
-      recordCaption.textContent = actualRecording ? 'Запись · через минуту отправится автоматически'
+      recordCaption.textContent = actualRecording ? (format(match).seconds === 60 ? 'Запись · через минуту отправится автоматически' : 'Запись · отправится автоматически, когда выйдет время')
         : canResume ? 'Включить микрофон и продолжить'
           : armed && started ? (error ? 'Запись не началась · дождитесь конца минуты и предложите повтор' : 'Начинаем запись…')
             : armed && match.status === 'countdown' ? 'Готов · общий старт через несколько секунд'
@@ -230,6 +268,12 @@ window.TrainerDuels = (() => {
       recordClock.hidden = !(['countdown', 'live'].includes(match.status) || actualRecording);
       recordClock.dataset.duelClock = match.id;
       recordCanvas.hidden = !actualRecording;
+    }
+    // До старта видно только формат (в сезоне он назначается на общем отсчёте), задание открывается со стартом.
+    function taskLine(match) {
+      if (match.topic) return speech(match) ? `${format(match).topic_label}: ${match.topic}` : `Общее слово: ${match.topic}`;
+      if (speech(match)) return 'Задание откроется в момент старта.';
+      return match.exercise || !data || data.mode !== 'season' ? 'Слово откроется в момент старта.' : 'Формат и задание откроются на общем старте.';
     }
     // Старт только когда оба на странице: подсказка говорит, кого и почему ждём.
     function waitingCaption(opponent) {
@@ -298,16 +342,18 @@ window.TrainerDuels = (() => {
           index ? h('span', { class: 'duel-vs', 'aria-hidden': 'true' }, 'VS') : null,
           h('span', { class: 'duel-match-person' }, avatar(player), h('span', null, player.name + (player.is_self ? ' (вы)' : '')))])),
         !demo ? h('div', { class: 'duel-player-status' }, (match.players || []).map((player) => h('span', { class: 'small soft' }, `${player.name}: ${player.completed ? 'ответ принят' : player.ready ? 'готов' : 'ещё не готов'}`))) : null,
-        match.topic ? h('p', { class: 'duel-topic' }, 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, 'Слово откроется в момент старта.'),
+        speech(match) ? h('p', { class: 'duel-task' }, `${format(match).title}. ${format(match).task}`) : null,
+        match.topic ? h('p', { class: 'duel-topic' }, speech(match) ? `${format(match).topic_label}: ` : 'Общее слово: ', h('strong', null, match.topic)) : h('p', { class: 'small soft' }, taskLine(match)),
         !demo && match.own_error ? h('p', { class: 'groups-error', role: 'alert' }, match.own_error, ' Подробности — в «Мой ответ».') : null,
         !demo && !inRecordPanel && (['countdown', 'live'].includes(match.status) || recording && armedId === match.id) ? h('div', { class: 'duel-clock num', 'data-duel-clock': match.id, role: 'timer', 'aria-label': 'Время поединка' }, '—') : null,
-        recording && armedId === match.id ? h('p', { class: 'duel-recording', role: 'status' }, 'Идёт запись. Через минуту она отправится автоматически.') : null,
+        recording && armedId === match.id ? h('p', { class: 'duel-recording', role: 'status' }, format(match).seconds === 60 ? 'Идёт запись. Через минуту она отправится автоматически.' : 'Идёт запись. Она отправится автоматически, когда выйдет время.') : null,
         done ? h('div', { class: 'duel-results' }, result.map((row) => h('div', { class: 'duel-result-row' },
           h('strong', null, ((match.players || []).find((player) => player.id === row.user_id) || {}).name || 'Участник'),
-          h('p', { class: 'num' }, row.battle_points != null ? `Слова: ${number(row.count)}` : `Слова: ${number(row.count)} · Навык: ${number(row.grade)}/10`),
+          h('p', { class: 'num' }, speech(match) ? `Оценка тренера: ${number(row.count)} из 50` : row.battle_points != null ? `Слова: ${number(row.count)}` : `Слова: ${number(row.count)} · Навык: ${number(row.grade)}/10`),
           h('p', { class: 'small soft' }, row.battle_points != null ? `Баллы недели: +${number(row.battle_points)}`
             : `Турнирные очки: ${number(row.league_points ?? (match.draw ? 1 : match.winner_id === row.user_id ? 3 : 0))}`))),
           h('p', { class: 'soft' }, match.draw ? 'Ничья' : `Победитель: ${((match.players || []).find((player) => player.id === match.winner_id) || {}).name || '—'}`)) : null,
+        done && match.insight ? insightCard(match) : null,
         !demo ? h('div', { class: 'row duel-actions' },
           canReady && !inRecordPanel ? action(hasVinyl ? 'Открыть запись встречи' : 'Готов · проверить микрофон', () => hasVinyl ? selectRecording(match) : ready(match), false, true) : null,
           canResume && !inRecordPanel

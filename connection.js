@@ -46,7 +46,10 @@
       /^[a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com$/.test(endpoint.hostname);
     const local = localShell && ['http:', 'https:'].includes(endpoint.protocol) &&
       ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
-    if (!tunnel && !local) throw new Error('Адрес подключения не подходит тренажёру.');
+    // Постоянный сервер: только точные имена из сборки оболочки (connection-config.js).
+    const fixed = endpoint.protocol === 'https:' && !endpoint.port && Array.isArray(config.endpointHosts) &&
+      config.endpointHosts.includes(endpoint.hostname);
+    if (!tunnel && !fixed && !local) throw new Error('Адрес подключения не подходит тренажёру.');
     return endpoint.origin;
   }
 

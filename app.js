@@ -1863,7 +1863,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const r = an.result;
     const meta = an.meta || {};
     const demo = isDemoSession(v.session);
-    const coachLabel = demo ? 'Демонстрация' : (meta.provider === 'codex' ? 'Codex · резерв' : (meta.model === 'opus' ? 'Opus' : 'Sonnet'));
+    const coachLabel = demo ? 'Демонстрация' : (meta.provider === 'codex' ? 'Codex · резерв' : (meta.model === 'opus' ? 'Opus' : meta.model === 'haiku' ? 'Haiku' : 'Sonnet'));
     const crit = [['logic', 'Логика'], ['vocabulary', 'Словарный запас'], ['thinking_speed', 'Скорость мышления'], ['persuasiveness', 'Убедительность'], ['structure', 'Структура речи']];
     const deltas = h('div', { class: 'deltas' });
     const card = h('div', { class: 'card' },

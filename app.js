@@ -1257,8 +1257,25 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   const vinyl = window.TrainerSoloveyVinyl ? TrainerSoloveyVinyl.create() : null;
   const vinylButton = vinyl ? h('button', { class: 'vinyl-trigger', type: 'button', hidden: true, 'aria-label': 'Запись', onclick: startTake },
     vinyl.el, h('span', { class: 'vinyl-trigger-label', 'aria-hidden': 'true' }, 'Запись')) : null;
+  // Слово (тема) продублировано прямо над пластинкой: на телефоне карточка темы уезжает вверх за экран,
+  // а человек должен видеть слово в тот момент, когда нажимает запись.
+  const stageWordLabel = h('span', { class: 'stage-word-label' });
+  const stageWordValue = h('strong', { class: 'stage-word-value' });
+  const stageWord = h('div', { class: 'stage-word', hidden: true }, stageWordLabel, stageWordValue);
+  const syncStageWord = () => {
+    const topic = String(v.topic || '').trim();
+    stageWord.hidden = !topic;
+    stageWordLabel.textContent = (v.ex && v.ex.topic_label) || 'Тема';
+    stageWordValue.textContent = topic;
+  };
+  if (typeof MutationObserver === 'function' && topicTextEl && topicTextEl.addEventListener) {
+    new MutationObserver(syncStageWord).observe(topicTextEl, { childList: true, characterData: true, subtree: true });
+    topicTextEl.addEventListener('input', syncStageWord);
+    topicTextEl.addEventListener('change', syncStageWord);
+  }
+  syncStageWord();
   const stage = h('section', { class: 'card stage' + (vinyl ? ' has-solovey-vinyl' : ''), 'aria-live': 'polite' },
-    vinylButton, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
+    stageWord, vinylButton, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
   const recordingDetails = h('details', { class: 'recording-details', open: true },
     h('summary', null, 'Запись упражнения'), stage);
   const workspace = h('div', { class: 'workspace' }, topicCard, recordingDetails);
@@ -1872,7 +1889,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const r = an.result;
     const meta = an.meta || {};
     const demo = isDemoSession(v.session);
-    const coachLabel = demo ? 'Демонстрация' : (meta.provider === 'codex' ? 'Codex · резерв' : (meta.model === 'opus' ? 'Opus' : meta.model === 'haiku' ? 'Haiku' : 'Sonnet'));
+    const coachLabel = demo ? 'Демонстрация' : (meta.provider === 'codex' ? 'Резервный тренер' : 'Тренер');
     const crit = [['logic', 'Логика'], ['vocabulary', 'Словарный запас'], ['thinking_speed', 'Скорость мышления'], ['persuasiveness', 'Убедительность'], ['structure', 'Структура речи']];
     const deltas = h('div', { class: 'deltas' });
     const card = h('div', { class: 'card' },
@@ -3522,7 +3539,7 @@ async function openSettings() {
     draw(currentVal);
     return box;
   };
-  const models = Object.entries((state && state.models) || { sonnet: 'Sonnet — быстрее', opus: 'Opus — глубже' });
+  const models = Object.entries((state && state.models) || { sonnet: 'Быстрая', opus: 'Глубокая' });
   const modelSeg = seg(models, state ? state.model : 'sonnet', async (k) => {
     try { app.state = { ...app.state, ...(await api('/api/state', { method: 'POST', body: { model: k } })) }; } catch (e) { toast(e.message); }
   });
@@ -3569,8 +3586,8 @@ async function openSettings() {
   }, 'btn ghost small');
   const isOwner = !state || state.is_owner !== false;
   const coachField = isOwner
-    ? h('div', { class: 'field' }, h('div', { class: 'label' }, 'Модель Claude'), modelSeg,
-      h('div', { class: 'help' }, 'Основной тренер работает через подписку Claude Code: Sonnet быстрее, Opus думает дольше. При ошибке Claude разбор подхватит Codex через подписку ChatGPT. Ключи API не нужны. Для участников бота в Claude используется Sonnet.'))
+    ? h('div', { class: 'field' }, h('div', { class: 'label' }, 'Модель тренера'), modelSeg,
+      h('div', { class: 'help' }, 'Быстрая модель отвечает скорее, глубокая думает дольше. Если основной тренер не ответил, разбор подхватит резервный.'))
     : h('div', { class: 'field' }, h('div', { class: 'label' }, state.name ? `Вы: ${state.name}` : 'Ваш профиль'),
       h('div', { class: 'help' }, state.analyses_left == null ? 'Разборов без ограничений.'
         : `Разборов на сегодня осталось: ${state.analyses_left}. Лимит обновляется каждый день.`));
@@ -3591,8 +3608,8 @@ async function openSettings() {
     h('div', { class: 'field' }, sw('sounds', true, 'Звуковые сигналы старта и конца записи'), sw('readQuestion', true, 'Тренер зачитывает вопрос вслух перед ответом')),
     h('div', { class: 'field' }, h('div', { class: 'label' }, `Уровень вопросов тренера: ${lvl} из 5`), h('div', { class: 'row' }, resetLvl)),
     h('div', { class: 'help' }, isOwner
-      ? 'Тексты и разборы хранятся на этом компьютере. После завершения занятия и перехода дальше аудиозаписи удаляются; незавершённые ответы остаются для восстановления. Распознавание локальное. Тренеру отправляются только текст и замеры: обычно в Claude, при его ошибке в Codex.'
-      : 'Тексты и разборы хранятся на компьютере владельца тренажёра. После завершения занятия и перехода дальше аудиозаписи удаляются; незавершённые ответы остаются для восстановления. Распознавание локальное. Тренеру отправляются только текст и замеры: обычно в Claude, при его ошибке в Codex.')));
+      ? 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота записи участников сохраняются для команды тренажёра, чтобы проверить качество разборов.'
+      : 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота ваши записи сохраняются для команды тренажёра, чтобы проверить качество разборов.')));
   if (!dlg.open) dlg.showModal();
   fillMics();
 }
@@ -3601,7 +3618,7 @@ async function openSettings() {
 function showHealth(hl) {
   const b = $('#banner');
   if (!hl || hl.ok) { b.hidden = true; return; }
-  const names = { ffmpeg: 'ffmpeg', whisper: 'распознаватель whisper-cli', model: 'модель распознавания', coach: 'тренер Claude / Codex', claude: 'Claude Code' };
+  const names = { ffmpeg: 'ffmpeg', whisper: 'распознаватель whisper-cli', model: 'модель распознавания', coach: 'тренер', claude: 'тренер' };
   b.replaceChildren(h('b', null, 'Не всё установлено: '), Object.entries(hl.hints).map(([k, hint]) => h('span', null, `${names[k] || k} — `, h('code', null, hint), '. ')));
   b.hidden = false;
 }

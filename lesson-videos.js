@@ -36,7 +36,7 @@
     options = options || {};
     const labels = Array.isArray(options.labels) ? options.labels : [];
     const many = lessons.length > 1;
-    let step = 0, dialog = null, video = null, tabs = [], destroyed = false;
+    let step = 0, dialog = null, video = null, heading = null, destroyed = false;
 
     const el = node('section', 'lesson-video');
     const open = node('button', 'lesson-video-open');
@@ -67,7 +67,7 @@
       paint();
       if (!video) return;
       const [name] = lessons[index];
-      tabs.forEach((tab, i) => { tab.classList.toggle('is-active', i === index); tab.setAttribute('aria-selected', String(i === index)); });
+      if (heading) heading.textContent = stepTitle(index);
       status.hidden = true;
       video.poster = `${base}${name}.jpg`;
       video.src = `${base}${name}.mp4`;
@@ -79,25 +79,13 @@
       dialog = node('dialog', 'lesson-video-dialog');
       dialog.setAttribute('aria-label', 'Видео: как выполнять упражнение');
       const bar = node('div', 'lesson-video-bar');
-      const heading = node('p', 'lesson-video-heading', 'Как выполнять');
+      // В окне только ролик текущего шага: следующий шаг человек увидит, когда до него дойдёт.
+      heading = node('p', 'lesson-video-heading', stepTitle(step));
       const close = node('button', 'lesson-video-close', 'Закрыть');
       close.type = 'button';
       close.addEventListener('click', () => dialog.close());
       bar.append(heading, close);
       dialog.append(bar);
-      if (many) {
-        const row = node('div', 'lesson-video-tabs');
-        row.setAttribute('role', 'tablist');
-        tabs = lessons.map((_, index) => {
-          const tab = node('button', 'lesson-video-tab', `Шаг ${index + 1}`);
-          tab.type = 'button';
-          tab.setAttribute('role', 'tab');
-          tab.addEventListener('click', () => load(index, true));
-          row.append(tab);
-          return tab;
-        });
-        dialog.append(row);
-      }
       video = node('video', 'lesson-video-player');
       video.controls = true;
       video.playsInline = true;

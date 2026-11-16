@@ -162,7 +162,7 @@ window.TrainerImagination = (() => {
     const finding = (items, name) => (items || []).length ? h('section', { class: 'imagination-findings' }, h('h6', null, name),
       items.map(item => h('div', null, h('blockquote', null, item.quote), h('p', null, item.comment)))) : null;
     const comparison = result.comparison;
-    const provider = ({ claude: 'Claude', codex: 'Codex' })[(attempt.meta || {}).provider];
+    const provider = ({ claude: 'Тренер', codex: 'Резервный тренер' })[(attempt.meta || {}).provider];
     return h('div', { class: 'thought-review imagination-review' }, h('p', null, result.summary),
       attempt.direction ? h('p', { class: 'small soft' }, 'Выбранный ход: ', attempt.direction.question) : null,
       finding(result.strengths, 'Что уже работает'), finding(result.opportunities, 'Где можно развить мысль'),

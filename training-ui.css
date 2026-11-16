@@ -97,3 +97,9 @@
   .training-tile-art { transition: none; }
   .training-tile:hover .training-tile-art, .training-tile:active .training-tile-art { transform: none; }
 }
+
+/* Слово (тема) прямо над пластинкой записи: видно в момент нажатия, без прокрутки вверх. */
+.stage .stage-word { display: grid; gap: 4px; justify-items: center; text-align: center; margin: 0 0 14px; width: 100%; }
+.stage .stage-word[hidden] { display: none; }
+.stage-word-label { font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; opacity: .68; }
+.stage-word-value { font-size: clamp(1.5rem, 6.4vw, 2.1rem); line-height: 1.15; font-weight: 750; overflow-wrap: anywhere; }

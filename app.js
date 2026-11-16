@@ -463,6 +463,14 @@ const mic = {
 };
 function micError(e) {
   if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+    const agent = navigator.userAgent || '';
+    // На телефоне ссылку из бота чаще всего открывает встроенный браузер Telegram: подсказываем, куда нажать.
+    if (/Android/i.test(agent)) {
+      return new Error('Нет доступа к микрофону. Нажмите значок слева от адреса сайта → «Разрешения» → «Микрофон» → «Разрешить» и попробуйте снова. Если ссылка открыта внутри Telegram и разрешение не предлагают, откройте её в Chrome: меню «⋮» → «Открыть в Chrome».');
+    }
+    if (/iPhone|iPad|iPod/i.test(agent)) {
+      return new Error('Нет доступа к микрофону. Нажмите «аА» в адресной строке → «Настройки веб-сайта» → «Микрофон» → «Разрешить» и попробуйте снова. Если ссылка открыта внутри Telegram, откройте её в Safari.');
+    }
     return new Error('Нет доступа к микрофону. Разрешите его в адресной строке браузера и попробуйте снова. На маке ещё проверьте: Системные настройки → Конфиденциальность и безопасность → Микрофон.');
   }
   if (e.name === 'NotFoundError') return new Error('Микрофон не найден. Подключите его или выберите другой в настройках.');
@@ -1121,6 +1129,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     : v.groupId ? `#/groups/${v.groupId}` : (v.programDay ? '#/program' : (sid ? '#/history' : '#/'));
   const backText = v.checkpoint || v.groupId ? 'К группе' : (v.programDay ? 'Программа дня' : (sid ? 'История' : 'Все упражнения'));
   const firstVisit = !prefs.get('seen.' + v.exId, false);
+  let lessonVideo = null;  // ролик-урок «как выполнять» для текущего шага
   prefs.set('seen.' + v.exId, true);
 
   const topicTextEl = h('div', { class: 'topic-text' });
@@ -2180,16 +2189,21 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   /* ---- сборка страницы ---- */
   const howto = h('details', { class: 'howto', open: firstVisit || null }, h('summary', null, 'Как выполнять'),
     h('ol', null, v.ex.howto.map((x) => h('li', null, x))));
+  if (window.createLessonVideo && !v.checkpoint && !isDemoSession(v.session)) {
+    // Модуль сам следит за сценой: на подготовке и записи ставит ролик на паузу, между попытками показывает ролик следующего шага.
+    lessonVideo = window.createLessonVideo(v.exId, { labels: plan().map((take) => take.label), stage, currentStep: nextIndex });
+  }
   const head = h('div', null,
     h('a', { class: 'back', href: backHref }, icon('back'), backText),
     h('div', { class: 'ex-head' }, h('h1', null, isDemoSession(v.session) ? `Демо · ${v.ex.title}` : v.ex.title), h('span', { class: 'chip' }, v.ex.develops),
       v.programDay ? h('span', { class: 'chip dark' }, 'Программа дня') : null),
     demoResultNotice(v.session),
-    howto);
+    howto, lessonVideo ? lessonVideo.el : null);
 
   if (!render(ctx, head, workspace, analysisBox, thoughts.el, takesBox, afterBox, nextDock)) {
     if (nextResize) nextResize.disconnect();
     if (vinyl) vinyl.destroy();
+      if (lessonVideo) lessonVideo.destroy();
     prepClock?.destroy(); recordClock?.destroy();
     if (meter.destroy) meter.destroy(); else meter.stop();
     thoughts.destroy();
@@ -2225,6 +2239,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       if (v.rec) v.rec.cancel({ preserve: true });
       thoughts.destroy();
       if (vinyl) vinyl.destroy();
+      if (lessonVideo) lessonVideo.destroy();
       prepClock?.destroy(); recordClock?.destroy();
       if (meter.destroy) meter.destroy(); else meter.stop();
       mic.close();

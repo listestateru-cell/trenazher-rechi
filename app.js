@@ -1261,13 +1261,34 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   // а человек должен видеть слово в тот момент, когда нажимает запись.
   const stageWordLabel = h('span', { class: 'stage-word-label' });
   const stageWordValue = h('strong', { class: 'stage-word-value' });
-  const stageWord = h('div', { class: 'stage-word', hidden: true }, stageWordLabel, stageWordValue);
+  const stageWordHint = h('span', { class: 'stage-word-hint', hidden: true });
+  const stageWord = h('div', { class: 'stage-word', hidden: true }, stageWordLabel, stageWordValue, stageWordHint);
+  // Словесный спринт: слово скрыто, пока человек не нажал на пластинку. Иначе ассоциации можно заготовить
+  // заранее и просто зачитать (решение владельца, 16.11.2026). Скрываем только до первой записи.
+  const secretNote = h('p', { class: 'topic-secret', hidden: true, role: 'status' }, 'Слово появится, когда вы нажмёте на пластинку.');
+  const wordIsSecret = () => v.exId === 'sprint' && !v.checkpoint && !isDemoSession(v.session) && !v.pendingTake
+    && !['starting', 'asking', 'prep', 'rec', 'upload', 'between', 'complete'].includes(v.stage) && firstMissing() === 0;
+  let wordWasSecret = false;
   const syncStageWord = () => {
     const topic = String(v.topic || '').trim();
+    const secret = !!topic && wordIsSecret();
     stageWord.hidden = !topic;
     stageWordLabel.textContent = (v.ex && v.ex.topic_label) || 'Тема';
-    stageWordValue.textContent = topic;
+    stageWordValue.textContent = secret ? 'Появится после нажатия' : topic;
+    stageWordHint.hidden = !secret;
+    const prepSeconds = Math.max(3, (v.ex && v.ex.prep) || 0);
+    const secondsWord = prepSeconds % 10 === 1 && prepSeconds % 100 !== 11 ? 'секунда'
+      : (prepSeconds % 10 >= 2 && prepSeconds % 10 <= 4 && (prepSeconds % 100 < 12 || prepSeconds % 100 > 14) ? 'секунды' : 'секунд');
+    stageWordHint.textContent = secret ? `Нажмите на пластинку: появится слово, ${prepSeconds} ${secondsWord} на подготовку — и запись.` : '';
+    secretNote.hidden = !secret;
+    if (stageWord.classList && topicCard.classList) {
+      stageWord.classList.toggle('is-secret', secret);
+      if (wordWasSecret && !secret) stageWord.classList.add('is-revealed');
+      topicCard.classList.toggle('word-secret', secret);
+    }
+    wordWasSecret = secret;
   };
+  if (typeof topicTextEl.before === 'function') topicTextEl.before(secretNote);
   if (typeof MutationObserver === 'function' && topicTextEl && topicTextEl.addEventListener) {
     new MutationObserver(syncStageWord).observe(topicTextEl, { childList: true, characterData: true, subtree: true });
     topicTextEl.addEventListener('input', syncStageWord);
@@ -1276,6 +1297,16 @@ async function ExerciseView(ctx, { exId, sid, params }) {
   syncStageWord();
   const stage = h('section', { class: 'card stage' + (vinyl ? ' has-solovey-vinyl' : ''), 'aria-live': 'polite' },
     stageWord, vinylButton, h('div', { class: 'ring-wrap' }, ring, center), stageTitle, stageSub, stageActions, canvas);
+  // Сцена сообщает режим в data-mode: по нажатию на пластинку слово проявляется.
+  if (typeof MutationObserver === 'function' && stage && stage.nodeType === 1) {
+    const syncStageSecret = () => {
+      syncStageWord();
+      // В первой попытке спринта после проявления слова отмены нет: иначе можно подсмотреть слово,
+      // отменить старт и заготовить ассоциации.
+      if (stage.classList) stage.classList.toggle('no-cancel', v.exId === 'sprint' && !v.checkpoint && firstMissing() === 0);
+    };
+    new MutationObserver(syncStageSecret).observe(stage, { attributes: true, attributeFilter: ['data-mode'] });
+  }
   const recordingDetails = h('details', { class: 'recording-details', open: true },
     h('summary', null, 'Запись упражнения'), stage);
   const workspace = h('div', { class: 'workspace' }, topicCard, recordingDetails);

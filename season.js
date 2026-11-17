@@ -67,6 +67,18 @@ window.TrainerSeason = (() => {
   }
   function actions(group, tools) {
     if (!group.joined || !group.week || !group.week.current || !(active(group) || upcoming(group))) return null;
+    // Сезон для каждого начинается со стартового среза: до него вместо заданий одна кнопка.
+    if (group.season.gate) {
+      const opened = (group.season.checkpoints && group.season.checkpoints.current || {}).session_id;
+      return h('section', { class: 'season-actions', 'aria-label': 'Главное на сегодня' },
+        h('div', { class: 'season-actions-row' },
+          h('button', { class: 'btn season-start', type: 'button', disabled: tools.pending, onclick: tools.onCheckpoint },
+            h('span', { class: 'season-start-copy' },
+              h('strong', null, tools.pending ? 'Открываю…' : opened ? 'Продолжить стартовый срез' : 'Пройти стартовый срез'),
+              h('span', { class: 'small' }, 'Чтение вслух и пересказ, около трёх минут')),
+            icon('arrow'))),
+        h('p', { class: 'small soft season-gate-note', role: 'status' }, 'С него начинается сезон. После среза откроются задания дня и битвы.'));
+    }
     const { tasks, done, next } = todayTasks(group);
     const waiting = active(group) ? list(group.season.battles && group.season.battles.waiting) : [];
     const progress = `${upcoming(group) ? 'Разминка · ' : ''}сегодня ${whole(done)} из ${whole(tasks.length)}`;
@@ -156,14 +168,18 @@ window.TrainerSeason = (() => {
 
   function trackStep(item) {
     const done = item.state === 'done';
-    const caption = done ? mark(item.score) : item.state === 'open' ? 'сейчас' : item.state === 'missed' ? 'пропущен' : shortDay(item.opens);
+    // «before» — срез прошёл до вступления человека в команду: это не пропуск.
+    const caption = done ? mark(item.score) : item.state === 'open' ? 'сейчас' : item.state === 'missed' ? 'пропущен'
+      : item.state === 'before' ? '—' : shortDay(item.opens);
+    const reading = done && item.reading && Number.isFinite(item.reading.wpm) ? item.reading : null;
     const trend = !Number.isFinite(item.delta) ? null : item.delta > 0 ? 'up' : item.delta < 0 ? 'down' : 'flat';
     return h('li', { class: 'season-track-step', 'data-state': item.state,
-      'aria-label': `${item.title}: ${done ? `${mark(item.score)} из 10${trend ? `, изменение ${signed(item.delta)}` : ''}` : item.state === 'open' ? 'открыт' : item.state === 'missed' ? 'пропущен' : `откроется ${longDay(item.opens)}`}` },
+      'aria-label': `${item.title}: ${done ? `пересказ ${mark(item.score)} из 10${trend ? `, изменение ${signed(item.delta)}` : ''}${reading ? `, чтение ${whole(reading.wpm)} слов в минуту` : ''}` : item.state === 'open' ? 'открыт' : item.state === 'missed' ? 'пропущен' : item.state === 'before' ? 'прошёл до вашего вступления' : `откроется ${longDay(item.opens)}`}` },
     h('span', { class: 'season-track-delta num', 'data-trend': trend || 'none', 'aria-hidden': 'true' }, trend ? signed(item.delta) : ''),
     h('span', { class: 'season-track-bar', 'aria-hidden': 'true' }, h('span', { style: `height:${share(done ? item.score : 0, 10)}` })),
     h('strong', { class: 'season-track-score num', 'aria-hidden': 'true' }, caption),
     h('span', { class: 'season-track-name small', 'aria-hidden': 'true' }, item.short),
+    reading ? h('span', { class: 'season-track-reading small num', 'aria-hidden': 'true' }, `${whole(reading.wpm)} сл/мин`) : null,
     done && item.session_id ? h('a', { class: 'season-track-link small', href: `#/s/${enc(item.session_id)}` }, 'Разбор') : null);
   }
   function checkpoints(group, tools) {
@@ -172,10 +188,12 @@ window.TrainerSeason = (() => {
     const current = view.current, items = list(view.own), seconds = view.seconds || 60;
     return h('section', { class: 'card season-checkpoint', 'aria-label': 'Срез команды' },
       heading('Срез', h('span', { class: 'chip' }, 'Видите только вы')),
-      h('p', { class: 'soft' }, `Пересказ текста и ответ на вопрос, по ${seconds} секунд. Баллов не даёт: показывает, как растёт ваша оценка тренера.`),
+      h('p', { class: 'soft' }, `Чтение вслух на скорость и пересказ другого текста, по ${seconds} секунд. Баллов не даёт: показывает, как меняются ваш темп чтения и оценка тренера за пересказ.`),
       current ? h('div', { class: 'season-checkpoint-call' },
         h('div', null, h('strong', null, current.title),
-          h('p', { class: 'small soft' }, `Открыт по ${longDay(current.closes)} включительно. Проходится один раз, занимает около трёх минут.`)),
+          h('p', { class: 'small soft' }, current.id === 'start'
+            ? 'С него начинается сезон: пока срез не пройден, задания дня и битвы закрыты. Проходится один раз, занимает около трёх минут.'
+            : `Открыт по ${longDay(current.closes)} включительно. Проходится один раз, занимает около трёх минут.`)),
         h('button', { class: 'btn', type: 'button', disabled: tools.pending, onclick: tools.onCheckpoint },
           tools.pending ? 'Открываю…' : current.session_id ? 'Продолжить срез' : 'Пройти срез', icon('arrow'))) : null,
       h('ol', { class: 'season-track' }, items.map(trackStep)),
@@ -189,14 +207,17 @@ window.TrainerSeason = (() => {
     if (!view || !Array.isArray(view.team)) return null;
     return h('details', { class: 'card season-team' }, h('summary', null, 'Срезы команды · видит только владелец'),
       rows.length ? h('div', { class: 'season-team-scroll' }, h('table', { class: 'groups-ranking season-team-table' },
-        h('caption', { class: 'groups-sr-only' }, 'Оценка тренера в срезах по участникам'),
+        h('caption', { class: 'groups-sr-only' }, 'Оценка тренера за пересказ и темп чтения в срезах по участникам'),
         h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Участник'), columns.map((item) => h('th', { scope: 'col', class: 'num' }, item.short)),
           h('th', { scope: 'col', class: 'num' }, 'Изменение'))),
         h('tbody', null, rows.map((person) => h('tr', null,
           h('th', { scope: 'row' }, h('span', { class: 'season-team-person' }, tools.avatar(person, 'season-team-avatar'), h('span', null, tools.nameOf(person)))),
           columns.map((item) => {
             const result = person.results && person.results[item.id];
-            return h('td', { class: 'num' }, result ? mark(result.score) : '—');
+            const read = result && result.reading && Number.isFinite(result.reading.wpm) ? result.reading : null;
+            // Под оценкой за пересказ — чтение: темп и, если текст не дочитан, какая часть прочитана.
+            return h('td', { class: 'num' }, result ? mark(result.score) : '—',
+              read ? h('span', { class: 'season-team-reading small soft' }, `${whole(read.wpm)} сл/мин${read.finished ? '' : ` · ${whole(read.percent)}%`}`) : null);
           }),
           h('td', { class: 'num season-team-change', 'data-trend': !Number.isFinite(person.change) ? 'none' : person.change > 0 ? 'up' : person.change < 0 ? 'down' : 'flat' },
             Number.isFinite(person.change) ? signed(person.change) : '—'))))))

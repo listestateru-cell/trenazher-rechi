@@ -92,7 +92,7 @@ window.TrainerGroups = (() => {
     const season = () => window.TrainerSeason || null;
     const seasonBoard = { open: false };
     const seasonTools = () => ({ avatar, nameOf, route: groupRoute, pending, expanded: expandedResults, board: seasonBoard,
-      onCheckpoint: openCheckpoint, onStart: startSeason, onCancel: cancelSeason,
+      onCheckpoint: openCheckpoint, onStart: startSeason, onCancel: cancelSeason, onGhost: toggleGhost,
       onForm: (patch) => { Object.assign(seasonForm, patch, { error: '' }); } });
     let avatarControls = [], avatarPreview = null, avatarPreviewLabel = null, avatarSave = null, avatarStatus = null;
     const avatarEndpoint = () => `${groupPath(gid)}/avatar`;
@@ -412,7 +412,8 @@ window.TrainerGroups = (() => {
           h('p', { class: 'small soft' }, 'Задания и результаты этой группы учитываются отдельно от других групп.')),
         S && group.season && group.season.exists ? S.hero(group, tools) : null,
         S && group.season && week.current !== false ? S.manage(group, tools, seasonForm) : null,
-        group.joined ? groupAvatarPanel(group) : null,
+        observerCard(group),
+        group.joined && !group.ghost ? groupAvatarPanel(group) : null,
         weekBar(group),
         group.demonstration && group.demo_note ? h('aside', { class: 'card groups-demo-notice', 'aria-label': 'Демонстрационные результаты' },
           h('h2', null, 'Демо-результаты'), h('p', null, group.demo_note)) : null,
@@ -471,6 +472,7 @@ window.TrainerGroups = (() => {
       // сезона, сразу «Чемпионство» с первыми тремя, свои баллы, срез и в конце битвы. Служебное — ниже.
       return [crumb('Все группы'), header(group.name, `Руководитель: ${nameOf(group.leader)}. Участвует в соревновании наравне со всеми.`),
         error ? errorNotice(error) : null,
+        observerCard(group),
         S.actions(group, tools),
         S.hero(group, tools),
         running && !week.current ? weekBar(group) : null,
@@ -482,7 +484,7 @@ window.TrainerGroups = (() => {
         S.checkpoints(group, tools),
         running ? S.battles(group, tools) : null,
         S.team(group, tools),
-        group.joined ? groupAvatarPanel(group) : null,
+        group.joined && !group.ghost ? groupAvatarPanel(group) : null,
         manager ? peoplePanel() : null,
         S.rules(running ? group : { ...group, rules: group.season.rules, score_policy: group.season.policy }, joinNotice),
         manager ? inviteCard(group) : null,
@@ -513,6 +515,27 @@ window.TrainerGroups = (() => {
         if (alive()) toast('Сезон отменён');
       } catch (caught) { error = caught; }
       pending = false; if (alive()) draw();
+    }
+    // Владелец тренажёра в чужой группе может быть наблюдателем: участники его не видят.
+    async function toggleGhost(on) {
+      if (pending) return;
+      pending = true; error = null; draw();
+      try {
+        data = await api(`${groupPath(gid)}/ghost`, { method: 'POST', body: { on } });
+        await syncState(data);
+        if (alive()) toast(on ? 'Вы наблюдатель: участники вас не видят' : 'Вы снова в составе группы');
+      } catch (caught) { error = caught; }
+      pending = false; if (alive()) draw();
+    }
+    function observerCard(group) {
+      if (!group.can_ghost) return null;
+      return h('aside', { class: 'card groups-observer', 'data-on': String(!!group.ghost), 'aria-label': 'Режим наблюдателя' },
+        h('h2', null, group.ghost ? 'Вы наблюдатель' : 'Участники вас видят'),
+        h('p', { class: 'soft' }, group.ghost
+          ? 'Вас нет в составе, рейтинге и битвах: участники о вас не знают. Срез и задания вы проходите как все, чтобы видеть процесс изнутри.'
+          : 'Вы в составе, в рейтинге и в парах на битвы. Можно остаться в группе наблюдателем: тогда участники вас не увидят.'),
+        h('button', { class: 'btn ghost', type: 'button', disabled: pending, onclick: () => toggleGhost(!group.ghost) },
+          pending ? 'Сохраняю…' : group.ghost ? 'Стать обычным участником' : 'Стать наблюдателем'));
     }
     async function openCheckpoint() {
       if (pending) return;

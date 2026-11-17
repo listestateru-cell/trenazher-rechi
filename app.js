@@ -255,12 +255,13 @@ async function showDraftRecovery() {
   if (!window.TrainerDrafts) return;
   const serial = ++recoverySerial, owner = TrainerDrafts.profile();
   const records = (await TrainerDrafts.list()).filter((r) => r.kind === 'audio');
-  const incomplete = TrainerDrafts.recordings ? await TrainerDrafts.recordings() : [];
+  // Прерванная запись попыткой не считается: её обрывки убираем молча и восстановить не предлагаем.
+  if (TrainerDrafts.dropInterrupted) await TrainerDrafts.dropInterrupted();
   if (serial !== recoverySerial || owner !== TrainerDrafts.profile()) return;
   let box = $('#trainer-recovery');
   if (!box) { box = h('section', { id: 'trainer-recovery', class: 'trainer-recovery page', 'aria-label': 'Неотправленные записи' }); $('#app').before(box); }
   box.querySelectorAll('audio').forEach((a) => { a.pause(); if (a.dataset.blobUrl) URL.revokeObjectURL(a.dataset.blobUrl); });
-  box.replaceChildren(); box.hidden = !records.length && !incomplete.length;
+  box.replaceChildren(); box.hidden = !records.length;
   records.forEach((record) => {
     const audioUrl = URL.createObjectURL(record.blob);
     const player = h('audio', { controls: true, preload: 'metadata', src: audioUrl, 'aria-label': 'Неотправленная запись' });
@@ -279,13 +280,6 @@ async function showDraftRecovery() {
     box.append(h('div', { class: 'card' }, h('h2', null, record.label || 'Неотправленная запись'), note, player,
       h('div', { class: 'row' }, retry, download,
         confirmButton('Убрать копию с устройства', 'Убрать эту копию?', () => TrainerDrafts.remove(record.id, record.requestId, record.profile)))));
-  });
-  incomplete.forEach((record) => {
-    const route = `#/s/${encodeURIComponent(record.sessionId)}${record.thoughtId ? '?thought=' + encodeURIComponent(record.thoughtId) : ''}`;
-    box.append(h('div', { class: 'card' }, h('h2', null, 'Сохранилась незавершённая запись'),
-      h('p', { class: 'small soft' }, 'На устройстве остались подтверждённые части записи. Конец мог потеряться; воспроизведение фрагмента нужно проверить.',
-        record.mayBeActive ? ' Эта запись также может продолжаться в другой вкладке.' : ''),
-      h('a', { class: 'btn ghost', href: route }, 'Открыть восстановление')));
   });
 }
 
@@ -484,6 +478,25 @@ function pickMime() {
   }
   return '';
 }
+/* Пока идёт запись, экран не гаснет: погасший экран обрывает запись, а прерванная попытка не считается. */
+const screenAwake = {
+  lock: null, wanted: false,
+  async hold() {
+    this.wanted = true;
+    if (this.lock || typeof navigator === 'undefined' || !navigator.wakeLock || document.hidden) return;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      if (!this.wanted || this.lock) { lock.release().catch(() => {}); return; }
+      this.lock = lock;
+      lock.addEventListener('release', () => { if (this.lock === lock) this.lock = null; });
+    } catch (_) { /* браузер не разрешил: запись идёт как раньше */ }
+  },
+  release() {
+    this.wanted = false;
+    const lock = this.lock; this.lock = null;
+    if (lock) lock.release().catch(() => {});
+  },
+};
 class Recorder {
   constructor(stream, options = {}) {
     const mime = pickMime();
@@ -510,6 +523,7 @@ class Recorder {
   }
   start() {
     this.mr.start(250); this.t0 = performance.now();
+    screenAwake.hold();
     if (this.options.journal && window.TrainerDrafts && TrainerDrafts.beginRecording) {
       try { this.journal = TrainerDrafts.beginRecording({ ...this.options.journal, mimeType: this.mr.mimeType }); }
       catch (_) { this.backupFailed(); }
@@ -518,6 +532,7 @@ class Recorder {
   get elapsed() { return (performance.now() - this.t0) / 1000; }
   stop(extra = {}) {
     if (this.stopPromise) return this.stopPromise;
+    screenAwake.release();
     this.stopPromise = new Promise((res) => {
       const done = async () => {
         const blob = new Blob(this.chunks, { type: (this.mr.mimeType || 'audio/webm').split(';')[0] });
@@ -533,6 +548,7 @@ class Recorder {
     return this.stopPromise;
   }
   cancel({ preserve = false } = {}) {
+    screenAwake.release();
     this.discarded = !preserve;
     let sealed, seal;
     if (preserve && this.journal && !this.stopPromise) {
@@ -546,6 +562,18 @@ class Recorder {
     if (!preserve && this.journal) return this.journal.discard();
     return sealed;
   }
+}
+
+/* Чтение вслух в срезе: докуда дочитан показанный текст и с каким темпом. Меряет сервер, не тренер. */
+function readingSummary(reading) {
+  if (!reading || !reading.reliable) {
+    return h('p', { class: 'reading-result small soft', role: 'status' },
+      'Не получилось надёжно сопоставить запись с текстом, поэтому темп чтения не посчитан. На оценку за пересказ это не влияет.');
+  }
+  const pace = Number.isFinite(reading.wpm) ? ` Темп — ${reading.wpm} слов/мин.` : '';
+  return h('p', { class: 'reading-result', role: 'status' }, reading.finished
+    ? `Текст дочитан целиком за ${f1(reading.seconds)} с.${pace}`
+    : `Дочитано ${reading.words_read} из ${reading.words_total} слов (${reading.percent}%).${pace}`);
 }
 
 /* Бегущая полоска громкости: видно, что тренер вас «слышит». */
@@ -1148,6 +1176,61 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const hidden = ['prep', 'rec'].includes(v.stage);
     const step = v.stage === 'rec' ? v.recIndex : nextIndex();
     const block = (label, ...body) => h('div', { class: 'checkpoint-task' }, h('p', { class: 'checkpoint-task-step' }, label), body);
+    const reading = v.checkpoint.reading;
+    const failed = step == null || hidden ? null : takeAt(step);
+    const retry = () => (failed && failed.status === 'error' && failed.error
+      ? topicTools.append(h('p', { class: 'warn-line', role: 'status' }, failed.error)) : null);
+    if (reading) {
+      // Срез с 16.11.2026: минута чтения вслух на скорость, затем минута на пересказ другого текста.
+      if (step == null) {
+        topicTextEl.append(block('Текст для чтения вслух', h('p', { class: 'checkpoint-task-text checkpoint-reading' }, reading.text)),
+          block('Текст для пересказа', h('p', { class: 'checkpoint-task-text' }, v.checkpoint.text)));
+        return;
+      }
+      if (step === 0) {
+        // Текст для чтения появляется только с началом записи: заранее его не подготовишь.
+        const live = v.stage === 'rec';
+        topicTextEl.append(block('Шаг 1 из 2 · чтение вслух', live
+          ? h('p', { class: 'checkpoint-task-text checkpoint-reading' }, reading.text)
+          : h('p', { class: 'checkpoint-task-hidden', role: 'status' }, 'Текст появится, когда начнётся запись.')));
+        if (live) {
+          // Таймер и «стоп» остаются на экране, пока человек листает текст: сцена записи далеко под ним.
+          v.readingTimeEl = h('strong', { class: 'checkpoint-reading-time num', 'aria-hidden': 'true' },
+            String(Math.max(0, Math.ceil((currentLimit() || 60) - (v.rec ? v.rec.elapsed : 0)))));
+          topicTools.append(h('div', { class: 'checkpoint-reading-bar' },
+            h('span', { class: 'checkpoint-reading-left' }, v.readingTimeEl, h('span', { class: 'small' }, 'секунд осталось')),
+            h('button', { class: 'btn', type: 'button', onclick: finishTake }, 'Дочитал — стоп')));
+        } else {
+          v.readingTimeEl = null;
+          retry();
+          topicTools.append(h('span', { class: 'small soft' },
+            'Читайте вслух быстро и чётко: на весь текст 60 секунд. Дочитали раньше — остановите запись. Не успели — она остановится сама.'));
+        }
+        if (live && v.readingShownFor !== v.captureToken) {
+          // Текст вырос над сценой записи: показываем его начало, а не таймер.
+          v.readingShownFor = v.captureToken;
+          if (typeof topicCard.scrollIntoView === 'function') requestAnimationFrame(() => { if (!v.destroyed) topicCard.scrollIntoView({ block: 'start' }); });
+        }
+        return;
+      }
+      topicTextEl.append(block(hidden ? 'Шаг 2 из 2 · пересказ текста' : 'Шаг 2 из 2 · новый текст для пересказа', hidden
+        ? h('p', { class: 'checkpoint-task-hidden', role: 'status' }, 'Текст скрыт. Перескажите его своими словами.')
+        : h('p', { class: 'checkpoint-task-text' }, v.checkpoint.text)));
+      if (!hidden) {
+        retry();
+        topicTools.append(h('span', { class: 'small soft' }, 'Это другой текст, не тот, что вы читали вслух. Прочитайте его про себя, без спешки. Когда начнёте запись, он скроется: на пересказ 60 секунд.'));
+        // После «Дочитал — стоп» заголовок шага уезжал за верх экрана, а под глазами оказывалась кнопка «Запись»:
+        // 16.11.2026 двое из двух новичков нажали её, не прочитав текст. Подводим к началу текста один раз
+        // и ещё раз, если пустая запись вернула человека к этому шагу.
+        const key = (failed && failed.upload_id) || 'new';
+        if (v.retellShownFor !== key) {
+          v.retellShownFor = key;
+          if (typeof topicCard.scrollIntoView === 'function') requestAnimationFrame(() => { if (!v.destroyed) topicCard.scrollIntoView({ block: 'start' }); });
+        }
+      }
+      return;
+    }
+    // Срезы прежнего образца (пересказ и ответ на вопрос) остаются читаемыми в истории.
     if (step == null) {
       // Обе записи отправлены: условие остаётся рядом с разбором.
       topicTextEl.append(block('Текст для пересказа', h('p', { class: 'checkpoint-task-text' }, v.checkpoint.text)),
@@ -1420,6 +1503,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       center.append(btn);
     }
     stageTitle.textContent = isFree ? 'Запись' : (label || 'Запись');
+    if (v.voidNote) stageSub.append(h('span', { role: 'status', style: 'display:block;margin-bottom:6px;color:var(--ink)' }, v.voidNote));
     if (typeof keyboardHints !== 'function' || keyboardHints()) stageSub.append(h('span', { class: 'kbd' }, 'Пробел'), ` — старт, ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
     else stageSub.append(`После нажатия — ${Math.max(3, v.ex.prep || 0)} с на подготовку`);
     if (v.stage === 'between' && v.session && !v.checkpoint) {
@@ -1460,6 +1544,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     const idx = nextIndex();
     if (idx == null) return;
     const token = ++v.captureToken;
+    v.voidNote = '';
     v.startRequested = true;
     if (vinylButton) vinylButton.disabled = true;
     try {
@@ -1540,6 +1625,26 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     renderStepper();
   }
 
+  // Свернули приложение или ушли с вкладки во время записи: попытка не считается (решение владельца,
+  // 16.11.2026). Запись и её резервная копия удаляются, человек возвращается к началу этой попытки.
+  function voidTake() {
+    if (v.stage !== 'rec' || !v.rec) return;
+    const recorder = v.rec;
+    v.rec = null;
+    v.captureToken++;
+    cancelAnimationFrame(v.raf);
+    meter.stop();
+    Promise.resolve(recorder.cancel()).catch(() => {});
+    mic.close();
+    v.backupWarning = '';
+    v.forceIndex = null;
+    if (nextIndex() == null) v.stage = 'complete';
+    else v.stage = v.session && v.session.takes.some((t) => t.status !== 'missing') ? 'between' : 'idle';
+    v.voidNote = 'Запись прервалась: приложение свернули. Эта попытка не считается, начните заново.';
+    renderStage();
+    renderStepper();
+  }
+
   async function beginRecording() {
     if (v.destroyed || !['prep', 'asking', 'idle', 'between', 'complete', 'error'].includes(v.stage)) return;
     const token = v.captureToken;
@@ -1586,6 +1691,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       setRing(left / lim);
       if (recordClock) recordClock.setValue(String(Math.ceil(left)));
       else if (v.timeEl) v.timeEl.textContent = String(Math.ceil(left));
+      if (v.readingTimeEl) v.readingTimeEl.textContent = String(Math.ceil(left));  // срез: таймер рядом с текстом
       stage.classList.toggle('ending', left <= 5);
       if (left <= 0) { finishTake(); return; }
     } else {
@@ -2042,7 +2148,8 @@ async function ExerciseView(ctx, { exId, sid, params }) {
       return { el, destroy() {} };
     }
     for (const w of t.warnings || []) el.append(h('div', { class: 'warn-line' }, w));
-    if (!demo && t.metrics && t.metrics.cut_by_timer) el.append(h('div', { class: 'warn-line' }, 'У границы времени в записи слышна речь. По этому признаку нельзя определить, закончена ли мысль.'));
+    if (t.mode === 'reading') el.append(readingSummary(t.reading));
+    if (!demo && t.metrics && t.metrics.cut_by_timer && t.mode !== 'reading') el.append(h('div', { class: 'warn-line' }, 'У границы времени в записи слышна речь. По этому признаку нельзя определить, закончена ли мысль.'));
 
     const words = t.words || [];
     if (t.audio_removed) el.append(h('p', { class: 'small soft' }, 'После завершения занятия аудио удалено. Текст ответа и разбор сохранены.'));
@@ -2211,7 +2318,7 @@ async function ExerciseView(ctx, { exId, sid, params }) {
     }
   }
   document.addEventListener('keydown', onKey);
-  const onRecordVisibility = () => { if (document.hidden) cancelPrep(); };
+  const onRecordVisibility = () => { if (document.hidden) { cancelPrep(); voidTake(); } };
   document.addEventListener('visibilitychange', onRecordVisibility);
   function onAudioSent(event) {
     const pending = v.pendingTake, sent = event.detail || {};
@@ -3639,8 +3746,8 @@ async function openSettings() {
     h('div', { class: 'field' }, sw('sounds', true, 'Звуковые сигналы старта и конца записи'), sw('readQuestion', true, 'Тренер зачитывает вопрос вслух перед ответом')),
     h('div', { class: 'field' }, h('div', { class: 'label' }, `Уровень вопросов тренера: ${lvl} из 5`), h('div', { class: 'row' }, resetLvl)),
     h('div', { class: 'help' }, isOwner
-      ? 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота записи участников сохраняются для команды тренажёра, чтобы проверить качество разборов.'
-      : 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота ваши записи сохраняются для команды тренажёра, чтобы проверить качество разборов.')));
+      ? 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота записи участников сохраняются для команды тренажёра, чтобы проверить качество разборов. Пока идёт пилот, ведётся и журнал действий: какие экраны человек открывает и сколько на них проводит.'
+      : 'Тексты и разборы хранятся на сервере тренажёра. Речь распознаётся на оборудовании тренажёра; ИИ-тренер получает только текст и замеры, без звука. В первую неделю пилота ваши записи сохраняются для команды тренажёра, чтобы проверить качество разборов. Пока идёт пилот, тренажёр также запоминает, какие экраны вы открываете и сколько на них проводите: так мы видим, что удобно, а что нет.')));
   if (!dlg.open) dlg.showModal();
   fillMics();
 }
@@ -3674,6 +3781,8 @@ async function boot() {
   // Внутри раздела страницу не перезагружаем сами (можно потерять запись) — только плашка.
   setInterval(() => { if (webVersion) checkVersion(false); }, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && webVersion) checkVersion(false); });
+  // Обрывки прерванных записей убираем до первого экрана: занятие не должно предлагать их восстановить.
+  if (window.TrainerDrafts && TrainerDrafts.dropInterrupted) await TrainerDrafts.dropInterrupted().catch(() => {});
   route();
   showDraftRecovery();
   if (window.TrainerAudioRetention) TrainerAudioRetention.retry().catch(() => {});

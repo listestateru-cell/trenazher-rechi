@@ -233,6 +233,34 @@
       && !activeRecordings.has(row.key) && !completed.has(row.id + '|' + row.requestId))
       .map(row => ({ ...row, incomplete: true, playback: 'unverified', mayBeActive: row.state !== 'interrupted' && Date.now() - row.updated < 5000 }));
   }
+  // Прерванная запись попыткой не считается (решение владельца, 16.11.2026): её части не показываем
+  // и восстановить не предлагаем. Запись, которая идёт на этой странице прямо сейчас, не трогаем;
+  // готовые, но ещё не отправленные записи (kind 'audio') остаются.
+  async function dropInterrupted() {
+    const owner = profile();
+    let dropped = 0;
+    try {
+      const db = await open();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('drafts', 'readwrite'), store = tx.objectStore('drafts');
+        const cursor = store.openCursor();
+        cursor.onsuccess = () => {
+          const item = cursor.result;
+          if (!item) return;
+          const row = item.value;
+          if (row.profile === owner && (row.kind === 'recording' && !activeRecordings.has(row.key)
+              || row.kind === 'recording-chunk' && !activeRecordings.has(key(row.recordingId, owner)))) {
+            item.delete();
+            if (row.kind === 'recording') dropped++;
+          }
+          item.continue();
+        };
+        monitor(tx, resolve, reject);
+      });
+    } catch (_) { return 0; }
+    if (dropped) changed();
+    return dropped;
+  }
   async function recoverRecording(id) {
     const owner = profile(), rows = await recordingRows(owner);
     const metadata = rows.find(row => row.id === id && row.key === key(id, owner) && row.kind === 'recording');
@@ -370,5 +398,5 @@
   }
   function removeText(id) { try { localStorage.removeItem(textKey(id)); } catch (_) {} }
   window.TrainerDrafts = { get, put, remove, list, operation, audio, getText, setText, removeText, uuid, profile,
-    beginRecording, recordings, recoverRecording, prepareRecovery, removeRecording, context: () => ({ profile: profile(), route: location.hash }) };
+    beginRecording, recordings, recoverRecording, prepareRecovery, removeRecording, dropInterrupted, context: () => ({ profile: profile(), route: location.hash }) };
 })();

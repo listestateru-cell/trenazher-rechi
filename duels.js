@@ -179,6 +179,8 @@ window.TrainerDuels = (() => {
         error ? h('p', { class: 'groups-error', role: 'alert' }, error) : null,
         data ? h('p', { class: 'soft' }, data.week && (data.week.label || `${data.week.start} — ${data.week.end}`) || '', ' · ',
           ({ season: data.week && data.week.current === false ? 'Битвы этой недели завершены' : 'Битвы идут всю неделю, с понедельника по воскресенье', scheduled: 'Ожидаем субботу', demo: 'Демонстрационный круговой этап', demo_finished: 'Демонстрация завершённой недели', finals: 'Воскресные финалы', qualification_tie: 'Дополнительная встреча за выход в финал', awaiting_results: 'Ждём завершения начатых встреч и проверки ответов', finished: data.podium && data.podium.length ? 'Турнир завершён' : 'Финальные встречи не определены' })[data.phase] || 'Встречи каждого с каждым') : null,
+        data && data.closed ? h('section', { class: 'card stack', role: 'status', 'aria-label': 'Битвы пока закрыты' },
+          h('h2', null, 'Битвы пока закрыты'), h('p', { class: 'soft' }, data.closed)) : null,
         data && !demoWeek && data.phase === 'scheduled' ? h('section', { class: 'card stack', role: 'status', 'aria-label': 'Расписание поединков' },
           h('h2', null, 'Поединки — в выходные'),
           h('p', null, 'В субботу каждый играет с каждым. В воскресенье — полуфиналы, финал и матч за третье место. Сейчас можно посмотреть соперников и договориться о времени.'),
